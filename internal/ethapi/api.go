@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -786,6 +787,24 @@ func (s *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fu
 	return nil, err
 }
 
+// getCompactBlock returns the requested block, but only containing minimal information related to the block
+// the logs in the block can also be requested
+func (s *BlockChainAPI) GetCompactBlock(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, logs bool) (map[string]interface{}, error) {
+	block, err := s.b.BlockByNumberOrHash(ctx, blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	result := s.rpcMarshalCompactBlock(ctx, block)
+	if logs { // add logs if requested
+		receipts, err := s.b.GetReceipts(ctx, block.Hash())
+		if err != nil {
+			return nil, err
+		}
+		result["logs"] = s.rpcMarshalCompactLogs(ctx, receipts)
+	}
+	return result, nil
+}
+
 // GetUncleByBlockNumberAndIndex returns the uncle block for the given block hash and index.
 func (s *BlockChainAPI) GetUncleByBlockNumberAndIndex(ctx context.Context, blockNr rpc.BlockNumber, index hexutil.Uint) (map[string]interface{}, error) {
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -1054,6 +1073,99 @@ func (s *BlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrO
 	return result.Return(), result.Err
 }
 
+// single multicall makes a single call, given a header and state
+// returns an object containing the return data, or error if one occured
+// the result should be merged together later by multicall function
+func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, timeout time.Duration, globalGasCap uint64) map[string]interface{} {
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err,
+		}
+	}
+	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
+	if err != nil {
+		return map[string]interface{}{
+			"error": err,
+		}
+	}
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	go func() {
+		<-ctx.Done()
+		evm.Cancel()
+	}()
+
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err := vmError(); err != nil {
+		return map[string]interface{}{
+			"error": err,
+		}
+	}
+
+	// If the timer caused an abort, return an appropriate error message
+	if evm.Cancelled() {
+		return map[string]interface{}{
+			"error": fmt.Errorf("execution aborted (timeout = %v)", timeout),
+		}
+	}
+	if err != nil {
+		return map[string]interface{}{
+			"error": fmt.Errorf("err: %w (supplied gas %d)", err, msg.Gas()),
+		}
+	}
+	if len(result.Revert()) > 0 {
+		revertErr := newRevertError(result)
+		data, _ := json.Marshal(&revertErr)
+		var result map[string]interface{}
+		json.Unmarshal(data, &result)
+		return result
+	}
+	if result.Err != nil {
+		return map[string]interface{}{
+			"error": "execution reverted",
+		}
+	}
+	return map[string]interface{}{
+		"data": hexutil.Bytes(result.Return()),
+	}
+}
+
+// multicall makes multiple eth_calls, on one state set by the provided block and overrides.
+// returns an array of results [{data: 0x...}], and errors per call tx. the entire call fails if the requested state couldnt be found or overrides failed to be applied
+func (s *BlockChainAPI) Multicall(ctx context.Context, txs []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride) ([]map[string]interface{}, error) {
+	results := []map[string]interface{}{}
+	state, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	if err := overrides.Apply(state); err != nil {
+		return nil, err
+	}
+	for _, tx := range txs {
+		thisState := state.Copy() // copy the state, because while eth_calls shouldnt change state, theres nothing stopping someobdy from making a state changing call
+		results = append(results, DoSingleMulticall(ctx, s.b, tx, thisState, header, s.b.RPCEVMTimeout(), s.b.RPCGasCap()))
+	}
+	return results, nil
+}
+
 func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
@@ -1249,6 +1361,28 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 	return fields, nil
 }
 
+func RPCMarshalCompactBlock(block *types.Block) map[string]interface{} {
+	return map[string]interface{}{
+		"number":     (*hexutil.Big)(block.Number()),
+		"hash":       block.Hash(),
+		"parentHash": block.ParentHash(),
+	}
+}
+
+func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
+	logs := []map[string]interface{}{}
+	for _, receipt := range receipts {
+		for _, log := range receipt.Logs {
+			logs = append(logs, map[string]interface{}{
+				"address": log.Address,
+				"data":    hexutil.Bytes(log.Data),
+				"topics":  log.Topics,
+			})
+		}
+	}
+	return logs
+}
+
 // rpcMarshalHeader uses the generalized output filler, then adds the total difficulty field, which requires
 // a `BlockchainAPI`.
 func (s *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.Header) map[string]interface{} {
@@ -1268,6 +1402,18 @@ func (s *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, inc
 		fields["totalDifficulty"] = (*hexutil.Big)(s.b.GetTd(ctx, b.Hash()))
 	}
 	return fields, err
+}
+
+// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
+// a `PublicBlockchainAPI`.
+func (s *BlockChainAPI) rpcMarshalCompactBlock(ctx context.Context, b *types.Block) map[string]interface{} {
+	return RPCMarshalCompactBlock(b)
+}
+
+// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
+// a `PublicBlockchainAPI`.
+func (s *BlockChainAPI) rpcMarshalCompactLogs(ctx context.Context, r types.Receipts) []map[string]interface{} {
+	return RPCMarshalCompactLogs(r)
 }
 
 // RPCTransaction represents a transaction that will serialize to the RPC representation of a transaction
