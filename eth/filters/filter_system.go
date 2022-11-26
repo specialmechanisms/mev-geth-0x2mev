@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -33,8 +34,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 // Config represents the configuration of the filter system.
@@ -61,6 +62,8 @@ type Backend interface {
 	GetLogs(ctx context.Context, blockHash common.Hash, number uint64) ([][]*types.Log, error)
 	PendingBlockAndReceipts() (*types.Block, types.Receipts)
 
+	CurrentHeader() *types.Header
+	ChainConfig() *params.ChainConfig
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription
 	SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription
 	SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription
@@ -74,21 +77,16 @@ type Backend interface {
 // FilterSystem holds resources shared by all filters.
 type FilterSystem struct {
 	backend   Backend
-	logsCache *lru.Cache
+	logsCache *lru.Cache[common.Hash, [][]*types.Log]
 	cfg       *Config
 }
 
 // NewFilterSystem creates a filter system.
 func NewFilterSystem(backend Backend, config Config) *FilterSystem {
 	config = config.withDefaults()
-
-	cache, err := lru.New(config.LogCacheSize)
-	if err != nil {
-		panic(err)
-	}
 	return &FilterSystem{
 		backend:   backend,
-		logsCache: cache,
+		logsCache: lru.NewCache[common.Hash, [][]*types.Log](config.LogCacheSize),
 		cfg:       &config,
 	}
 }
@@ -97,7 +95,7 @@ func NewFilterSystem(backend Backend, config Config) *FilterSystem {
 func (sys *FilterSystem) cachedGetLogs(ctx context.Context, blockHash common.Hash, number uint64) ([][]*types.Log, error) {
 	cached, ok := sys.logsCache.Get(blockHash)
 	if ok {
-		return cached.([][]*types.Log), nil
+		return cached, nil
 	}
 
 	logs, err := sys.backend.GetLogs(ctx, blockHash, number)
@@ -124,12 +122,12 @@ const (
 	PendingLogsSubscription
 	// MinedAndPendingLogsSubscription queries for logs in mined and pending blocks.
 	MinedAndPendingLogsSubscription
-	// PendingTransactionsSubscription queries tx hashes for pending
-	// transactions entering the pending state
+	// PendingTransactionsSubscription queries for pending transactions entering
+	// the pending state
 	PendingTransactionsSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
-	// LastSubscription keeps track of the last index
+	// LastIndexSubscription keeps track of the last index
 	LastIndexSubscription
 )
 
@@ -151,7 +149,7 @@ type subscription struct {
 	created   time.Time
 	logsCrit  ethereum.FilterQuery
 	logs      chan []*types.Log
-	hashes    chan []common.Hash
+	txs       chan []*types.Transaction
 	headers   chan *types.Header
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
@@ -244,7 +242,7 @@ func (sub *Subscription) Unsubscribe() {
 			case sub.es.uninstall <- sub.f:
 				break uninstallLoop
 			case <-sub.f.logs:
-			case <-sub.f.hashes:
+			case <-sub.f.txs:
 			case <-sub.f.headers:
 			}
 		}
@@ -311,7 +309,7 @@ func (es *EventSystem) subscribeMinedPendingLogs(crit ethereum.FilterQuery, logs
 		logsCrit:  crit,
 		created:   time.Now(),
 		logs:      logs,
-		hashes:    make(chan []common.Hash),
+		txs:       make(chan []*types.Transaction),
 		headers:   make(chan *types.Header),
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -328,7 +326,7 @@ func (es *EventSystem) subscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		logsCrit:  crit,
 		created:   time.Now(),
 		logs:      logs,
-		hashes:    make(chan []common.Hash),
+		txs:       make(chan []*types.Transaction),
 		headers:   make(chan *types.Header),
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -345,7 +343,7 @@ func (es *EventSystem) subscribePendingLogs(crit ethereum.FilterQuery, logs chan
 		logsCrit:  crit,
 		created:   time.Now(),
 		logs:      logs,
-		hashes:    make(chan []common.Hash),
+		txs:       make(chan []*types.Transaction),
 		headers:   make(chan *types.Header),
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -361,7 +359,7 @@ func (es *EventSystem) SubscribeNewHeads(headers chan *types.Header) *Subscripti
 		typ:       BlocksSubscription,
 		created:   time.Now(),
 		logs:      make(chan []*types.Log),
-		hashes:    make(chan []common.Hash),
+		txs:       make(chan []*types.Transaction),
 		headers:   headers,
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -369,15 +367,15 @@ func (es *EventSystem) SubscribeNewHeads(headers chan *types.Header) *Subscripti
 	return es.subscribe(sub)
 }
 
-// SubscribePendingTxs creates a subscription that writes transaction hashes for
+// SubscribePendingTxs creates a subscription that writes transactions for
 // transactions that enter the transaction pool.
-func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscription {
+func (es *EventSystem) SubscribePendingTxs(txs chan []*types.Transaction) *Subscription {
 	sub := &subscription{
 		id:        rpc.NewID(),
 		typ:       PendingTransactionsSubscription,
 		created:   time.Now(),
 		logs:      make(chan []*types.Log),
-		hashes:    hashes,
+		txs:       txs,
 		headers:   make(chan *types.Header),
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -421,12 +419,8 @@ func (es *EventSystem) handleRemovedLogs(filters filterIndex, ev core.RemovedLog
 }
 
 func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) {
-	hashes := make([]common.Hash, 0, len(ev.Txs))
-	for _, tx := range ev.Txs {
-		hashes = append(hashes, tx.Hash())
-	}
 	for _, f := range filters[PendingTransactionsSubscription] {
-		f.hashes <- hashes
+		f.txs <- ev.Txs
 	}
 }
 

@@ -373,7 +373,7 @@ func (q *queue) Results(block bool) []*fetchResult {
 			size += receipt.Size()
 		}
 		for _, tx := range result.Transactions {
-			size += tx.Size()
+			size += common.StorageSize(tx.Size())
 		}
 		q.resultSize = common.StorageSize(blockCacheSizeWeight)*size +
 			(1-common.StorageSize(blockCacheSizeWeight))*q.resultSize
@@ -870,7 +870,7 @@ func (q *queue) deliver(id string, taskPool map[common.Hash]*types.Header,
 	}
 
 	for _, header := range request.Headers[:i] {
-		if res, stale, err := q.resultCache.GetDeliverySlot(header.Number.Uint64()); err == nil {
+		if res, stale, err := q.resultCache.GetDeliverySlot(header.Number.Uint64()); err == nil && !stale {
 			reconstruct(accepted, res)
 		} else {
 			// else: between here and above, some other peer filled this result,
