@@ -41,7 +41,7 @@ var emptyCodeHash = crypto.Keccak256Hash(nil)
 //
 //  1. Nonce handling
 //  2. Pre pay gas
-//  3. Create a new state object if the recipient is \0*32
+//  3. Create a new state object if the recipient is nil
 //  4. Value transfer
 //
 // == If contract creation ==
@@ -300,7 +300,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	var (
 		msg              = st.msg
 		sender           = vm.AccountRef(msg.From())
-		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil)
+		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil, st.evm.Context.Time)
 		contractCreation = msg.To() == nil
 	)
 
