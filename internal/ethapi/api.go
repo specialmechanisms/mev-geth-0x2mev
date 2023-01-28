@@ -1647,7 +1647,7 @@ func AccessListOnState(ctx context.Context, b Backend, header *types.Header, db 
 	// Retrieve the precompiles since they don't need to be added to the access list
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	// Retrieve the precompiles since they don't need to be added to the access list
-	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, isPostMerge))
+	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, isPostMerge, new(big.Int).SetUint64(header.Time)))
 
 	// Create an initial tracer
 	prevTracer := logger.NewAccessListTracer(nil, args.from(), to, precompiles)
@@ -2670,6 +2670,10 @@ func (s *SearcherAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBun
 			if len(revert) > 0 {
 				jsonResult["revert"] = string(revert)
 			}
+		}
+
+		if len(result.ReturnData) > 0 {
+			jsonResult["data"] = hexutil.Bytes(result.ReturnData)
 		}
 
 		// if simulation logs are requested append it to logs
