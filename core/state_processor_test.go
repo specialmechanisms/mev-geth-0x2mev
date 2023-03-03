@@ -404,7 +404,7 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 		header.BaseFee = misc.CalcBaseFee(config, parent.Header())
 	}
 	if config.IsShanghai(header.Time) {
-		header.WithdrawalsHash = &types.EmptyRootHash
+		header.WithdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 	var receipts []*types.Receipt
 	// The post-state result doesn't need to be correct (this is a bad block), but we do need something there
@@ -423,5 +423,8 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 	}
 	header.Root = common.BytesToHash(hasher.Sum(nil))
 	// Assemble and return the final block for sealing
+	if config.IsShanghai(header.Time) {
+		return types.NewBlockWithWithdrawals(header, txs, nil, receipts, []*types.Withdrawal{}, trie.NewStackTrie(nil))
+	}
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
 }
