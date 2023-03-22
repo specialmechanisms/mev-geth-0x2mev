@@ -2343,8 +2343,8 @@ type CallBundleArgs struct {
 	Timestamp              *uint64               `json:"timestamp"`
 	Timeout                *int64                `json:"timeout"`
 	GasLimit               *uint64               `json:"gasLimit"`
-	Difficulty             *big.Int              `json:"difficulty"`
-	BaseFee                *big.Int              `json:"baseFee"`
+	Difficulty             *hexutil.Big          `json:"difficulty"`
+	BaseFee                *hexutil.Big          `json:"baseFee"`
 	SimulationLogs         bool                  `json:"simulationLogs"`
 	CreateAccessList       bool                  `json:"createAccessList"`
 	StateOverrides         *StateOverride        `json:"stateOverrides"`
@@ -2399,7 +2399,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	}
 	difficulty := parent.Difficulty
 	if args.Difficulty != nil {
-		difficulty = args.Difficulty
+		difficulty = args.Difficulty.ToInt()
 	}
 	gasLimit := parent.GasLimit
 	if args.GasLimit != nil {
@@ -2407,7 +2407,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	}
 	var baseFee *big.Int
 	if args.BaseFee != nil {
-		baseFee = args.BaseFee
+		baseFee = args.BaseFee.ToInt()
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
 		baseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
