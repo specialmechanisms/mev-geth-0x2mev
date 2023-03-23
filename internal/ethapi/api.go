@@ -1134,7 +1134,7 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 	}
 	if err != nil {
 		return map[string]interface{}{
-			"error": fmt.Errorf("err: %w (supplied gas %d)", err, msg.Gas()),
+			"error": fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit),
 		}
 	}
 	if len(result.Revert()) > 0 {
@@ -1694,7 +1694,7 @@ func AccessListOnState(ctx context.Context, b Backend, header *types.Header, db 
 		if err != nil {
 			return nil, 0, nil, err
 		}
-		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()))
+		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
@@ -2683,24 +2683,24 @@ func (s *SearcherAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBun
 		// if an access list is requested create and append
 		if args.CreateAccessList {
 			// welp guess we're copying these again sigh
-			txArgFrom := msg.From()
-			txArgGas := hexutil.Uint64(msg.Gas())
-			txArgNonce := hexutil.Uint64(msg.Nonce())
-			txArgData := hexutil.Bytes(msg.Data())
+			txArgFrom := msg.From
+			txArgGas := hexutil.Uint64(msg.GasLimit)
+			txArgNonce := hexutil.Uint64(msg.Nonce)
+			txArgData := hexutil.Bytes(msg.Data)
 			txargs := TransactionArgs{
 				From:    &txArgFrom,
-				To:      msg.To(),
+				To:      msg.To,
 				Gas:     &txArgGas,
 				Nonce:   &txArgNonce,
 				Data:    &txArgData,
 				ChainID: (*hexutil.Big)(s.chain.Config().ChainID),
-				Value:   (*hexutil.Big)(msg.Value()),
+				Value:   (*hexutil.Big)(msg.Value),
 			}
-			if msg.GasFeeCap().Cmp(big.NewInt(0)) == 0 { // no maxbasefee, set gasprice instead
-				txargs.GasPrice = (*hexutil.Big)(msg.GasPrice())
+			if msg.GasFeeCap.Cmp(big.NewInt(0)) == 0 { // no maxbasefee, set gasprice instead
+				txargs.GasPrice = (*hexutil.Big)(msg.GasPrice)
 			} else { // otherwise set base and priority fee
-				txargs.MaxFeePerGas = (*hexutil.Big)(msg.GasFeeCap())
-				txargs.MaxPriorityFeePerGas = (*hexutil.Big)(msg.GasTipCap())
+				txargs.MaxFeePerGas = (*hexutil.Big)(msg.GasFeeCap)
+				txargs.MaxPriorityFeePerGas = (*hexutil.Big)(msg.GasTipCap)
 			}
 			acl, _, vmerr, err := AccessListOnState(ctx, s.b, header, accessListState, txargs)
 			if err == nil {
