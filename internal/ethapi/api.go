@@ -792,20 +792,24 @@ func (s *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fu
 
 // getCompactBlock returns the requested block, but only containing minimal information related to the block
 // the logs in the block can also be requested
-func (s *BlockChainAPI) GetCompactBlock(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, logs bool) (map[string]interface{}, error) {
-	block, err := s.b.BlockByNumberOrHash(ctx, blockNrOrHash)
-	if err != nil {
-		return nil, err
-	}
-	result := s.rpcMarshalCompactBlock(ctx, block)
-	if logs { // add logs if requested
-		receipts, err := s.b.GetReceipts(ctx, block.Hash())
+func (s *BlockChainAPI) GetCompactBlocks(ctx context.Context, blockNrOrHashes []rpc.BlockNumberOrHash, logs bool) ([]map[string]interface{}, error) {
+	resultArray := make([]map[string]interface{}, 0, len(blockNrOrHashes))
+	for _, blockNrOrHash := range blockNrOrHashes {
+		block, err := s.b.BlockByNumberOrHash(ctx, blockNrOrHash)
 		if err != nil {
 			return nil, err
 		}
-		result["logs"] = s.rpcMarshalCompactLogs(ctx, receipts)
+		result := s.rpcMarshalCompactBlock(ctx, block)
+		if logs { // add logs if requested
+			receipts, err := s.b.GetReceipts(ctx, block.Hash())
+			if err != nil {
+				return nil, err
+			}
+			result["logs"] = s.rpcMarshalCompactLogs(ctx, receipts)
+		}
+		resultArray = append(resultArray, result)
 	}
-	return result, nil
+	return resultArray, nil
 }
 
 // GetUncleByBlockNumberAndIndex returns the uncle block for the given block hash and index.
