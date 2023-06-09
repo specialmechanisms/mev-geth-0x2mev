@@ -1139,7 +1139,11 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 			"error": err,
 		}
 	}
-	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
+	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
+	// if blockOverrides != nil {
+	// 	blockOverrides.Apply(&blockCtx)
+	// }
+	evm, vmError := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
 	if err != nil {
 		return map[string]interface{}{
 			"error": err,
@@ -1712,11 +1716,8 @@ func AccessListOnState(ctx context.Context, b Backend, header *types.Header, db 
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
-		config := vm.Config{Tracer: tracer, Debug: true, NoBaseFee: true}
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, header, &config)
-		if err != nil {
-			return nil, 0, nil, err
-		}
+		config := vm.Config{Tracer: tracer, NoBaseFee: true}
+		vmenv, _ := b.GetEVM(ctx, msg, statedb, header, &config, nil)
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
@@ -2453,7 +2454,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	coinbaseBalanceBefore := state.GetBalance(coinbase)
 
 	bundleHash := sha3.NewLegacyKeccak256()
-	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
+	signer := types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
 	for i, tx := range txs {
