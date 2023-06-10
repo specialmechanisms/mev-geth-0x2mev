@@ -790,28 +790,6 @@ func (s *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fu
 	return nil, err
 }
 
-// getCompactBlock returns the requested block, but only containing minimal information related to the block
-// the logs in the block can also be requested
-func (s *BlockChainAPI) GetCompactBlocks(ctx context.Context, blockNrOrHashes []rpc.BlockNumberOrHash, logs bool) ([]map[string]interface{}, error) {
-	resultArray := make([]map[string]interface{}, 0, len(blockNrOrHashes))
-	for _, blockNrOrHash := range blockNrOrHashes {
-		block, err := s.b.BlockByNumberOrHash(ctx, blockNrOrHash)
-		if err != nil {
-			return nil, err
-		}
-		result := s.rpcMarshalCompactBlock(ctx, block)
-		if logs { // add logs if requested
-			receipts, err := s.b.GetReceipts(ctx, block.Hash())
-			if err != nil {
-				return nil, err
-			}
-			result["logs"] = s.rpcMarshalCompactLogs(ctx, receipts)
-		}
-		resultArray = append(resultArray, result)
-	}
-	return resultArray, nil
-}
-
 // GetUncleByBlockNumberAndIndex returns the uncle block for the given block hash and index.
 func (s *BlockChainAPI) GetUncleByBlockNumberAndIndex(ctx context.Context, blockNr rpc.BlockNumber, index hexutil.Uint) (map[string]interface{}, error) {
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -1413,11 +1391,11 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 	return fields, nil
 }
 
-func RPCMarshalCompactBlock(block *types.Block) map[string]interface{} {
+func RPCMarshalCompactHeader(header *types.Header) map[string]interface{} {
 	return map[string]interface{}{
-		"number":     (*hexutil.Big)(block.Number()),
-		"hash":       block.Hash(),
-		"parentHash": block.ParentHash(),
+		"number":     (*hexutil.Big)(header.Number),
+		"hash":       header.Hash(),
+		"parentHash": header.ParentHash,
 	}
 }
 
@@ -1454,18 +1432,6 @@ func (s *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, inc
 		fields["totalDifficulty"] = (*hexutil.Big)(s.b.GetTd(ctx, b.Hash()))
 	}
 	return fields, err
-}
-
-// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
-// a `PublicBlockchainAPI`.
-func (s *BlockChainAPI) rpcMarshalCompactBlock(ctx context.Context, b *types.Block) map[string]interface{} {
-	return RPCMarshalCompactBlock(b)
-}
-
-// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
-// a `PublicBlockchainAPI`.
-func (s *BlockChainAPI) rpcMarshalCompactLogs(ctx context.Context, r types.Receipts) []map[string]interface{} {
-	return RPCMarshalCompactLogs(r)
 }
 
 // RPCTransaction represents a transaction that will serialize to the RPC representation of a transaction
@@ -2745,4 +2711,35 @@ func (s *SearcherAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBun
 	ret["results"] = results
 
 	return ret, nil
+}
+
+// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
+// a `PublicBlockchainAPI`.
+func (s *SearcherAPI) rpcMarshalCompactHeader(ctx context.Context, h *types.Header) map[string]interface{} {
+	return RPCMarshalCompactHeader(h)
+}
+
+// rpcMarshalCompact uses the generalized output filler, then adds the total difficulty field, which requires
+// a `PublicBlockchainAPI`.
+func (s *SearcherAPI) rpcMarshalCompactLogs(ctx context.Context, r types.Receipts) []map[string]interface{} {
+	return RPCMarshalCompactLogs(r)
+}
+
+// GetCompactBlocks gets the compact block data for the given block's hash or number
+// the logs in the block can also be requested
+func (s *SearcherAPI) GetCompactBlocks(ctx context.Context, blockNrOrHashes []rpc.BlockNumberOrHash, logs bool) ([]map[string]interface{}, error) {
+	resultArray := make([]map[string]interface{}, 0, len(blockNrOrHashes))
+	for _, blockNrOrHash := range blockNrOrHashes {
+		header, err := s.b.HeaderByNumberOrHash(ctx, blockNrOrHash)
+		if err != nil {
+			return nil, err
+		}
+		result := s.rpcMarshalCompactHeader(ctx, header)
+		if logs { // add logs if requested
+			receipts := s.chain.GetReceiptsWithHeader(header)
+			result["logs"] = s.rpcMarshalCompactLogs(ctx, receipts)
+		}
+		resultArray = append(resultArray, result)
+	}
+	return resultArray, nil
 }
