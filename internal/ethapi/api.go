@@ -2473,7 +2473,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	coinbaseBalanceBefore := state.GetBalance(coinbase)
 
 	bundleHash := sha3.NewLegacyKeccak256()
-	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
+	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
 	for i, tx := range txs {
