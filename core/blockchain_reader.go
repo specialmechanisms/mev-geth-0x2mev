@@ -232,16 +232,16 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 // mevexec
 // GetHeaderAndReceiptsByHash retrieves the header and receipts of a block by hash
 // header must not be nil
-func (bc *BlockChain) GetReceiptsWithHeader(header *types.Header) types.Receipts {
+func (bc *BlockChain) GetLogsWithHeader(header *types.Header) [][]*types.Log {
 	if receipts, ok := bc.receiptsCache.Get(header.Hash()); ok {
-		return receipts
+		logs := make([][]*types.Log, len(receipts))
+		for i, receipt := range receipts {
+			logs[i] = receipt.Logs
+		}
+		return logs
 	}
-	receipts := rawdb.ReadReceipts(bc.db, header.Hash(), header.Number.Uint64(), header.Time, bc.chainConfig)
-	if receipts == nil {
-		return nil
-	}
-	bc.receiptsCache.Add(header.Hash(), receipts)
-	return receipts
+	logs := rawdb.ReadLogs(bc.db, header.Hash(), header.Number.Uint64(), bc.chainConfig)
+	return logs
 }
 
 // mevexec
