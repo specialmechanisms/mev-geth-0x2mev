@@ -2364,7 +2364,7 @@ type CallBundleArgs struct {
 // CallBundleArgs represents the arguments for a call.
 type CallBundleSignedByOther struct {
 	Txs                    []hexutil.Bytes       `json:"txs"`
-	TxsSignedByOther	   []hexutil.Bytes       `json:"txsSignedByOther"`
+	TxsSignedByOther       []hexutil.Bytes       `json:"txsSignedByOther"`
 	OriginalSenders        []common.Address      `json:"originalSenders"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
@@ -2686,32 +2686,32 @@ func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBund
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
 
-	for i, tx := range txsSignedByOther {		
+	for i, tx := range txsSignedByOther {
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.SetTxContext(tx.Hash(), i)		
+		state.SetTxContext(tx.Hash(), i)
 
-		accessListState := state.Copy() // create a copy just in case we use it later for access list creation		
+		accessListState := state.Copy() // create a copy just in case we use it later for access list creation
 		receipt, result, err := core.ApplyTransactionSignedByOther(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig, args.OriginalSenders[i])
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}		
+		}
 
 		txHash := tx.Hash().String()
 		from, err := types.Sender(signer, tx)
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}		
+		}
 		to := "0x"
 		if tx.To() != nil {
 			to = tx.To().String()
-		}		
+		}
 		jsonResult := map[string]interface{}{
 			"txHash":      txHash,
 			"gasUsed":     receipt.GasUsed,
 			"fromAddress": from.String(),
 			"toAddress":   to,
 		}
-		totalGasUsed += receipt.GasUsed		
+		totalGasUsed += receipt.GasUsed
 		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
@@ -2733,7 +2733,7 @@ func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBund
 		// if simulation logs are requested append it to logs
 		if args.SimulationLogs {
 			jsonResult["logs"] = receipt.Logs
-		}		
+		}
 		// if an access list is requested create and append
 		if args.CreateAccessList {
 			// ifdk another way to fill all values so this will have to do - x2
@@ -2754,7 +2754,7 @@ func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBund
 			} else { // otherwise set base and priority fee
 				txargs.MaxFeePerGas = (*hexutil.Big)(tx.GasFeeCap())
 				txargs.MaxPriorityFeePerGas = (*hexutil.Big)(tx.GasTipCap())
-			}			
+			}
 			acl, gasUsed, vmerr, err := AccessListOnState(ctx, s.b, header, accessListState, txargs)
 			if err == nil {
 				if gasUsed != receipt.GasUsed {
@@ -2768,7 +2768,7 @@ func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBund
 			} else {
 				log.Info("CallBundle accesslist creation encountered err", "err", err)
 				jsonResult["accessList"] = acl //
-			} // return the empty accesslist either way			
+			} // return the empty accesslist either way
 		}
 		coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
 		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
@@ -2776,14 +2776,14 @@ func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBund
 		jsonResult["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
 		jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
 		jsonResult["gasUsed"] = receipt.GasUsed
-		results = append(results, jsonResult)		
+		results = append(results, jsonResult)
 	}
 
-	for i, tx := range txs {		
+	for i, tx := range txs {
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.SetTxContext(tx.Hash(), i)		
+		state.SetTxContext(tx.Hash(), i)
 
-		accessListState := state.Copy() // create a copy just in case we use it later for access list creation		
+		accessListState := state.Copy() // create a copy just in case we use it later for access list creation
 
 		receipt, result, err := core.ApplyTransaction(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
