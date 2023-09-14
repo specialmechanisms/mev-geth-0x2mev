@@ -2553,7 +2553,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	if args.BaseFee != nil {
 		baseFee = args.BaseFee.ToInt()
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
-		baseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
+		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
