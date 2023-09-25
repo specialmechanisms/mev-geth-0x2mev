@@ -216,6 +216,19 @@ func (api *FilterAPI) NewBlockFilter() rpc.ID {
 	return headerSub.ID
 }
 
+type PoolBalanceMetaData struct {
+	ExchangeName string
+	Address common.Address
+	Topic common.Hash
+	// TODO nick-smc not sure about the type here yet
+	BalanceMetaData hexutil.Bytes
+}
+
+type NewHeadsWithPoolBalanceMetaData struct {
+	Header *types.Header
+	PoolBalanceMetaData map[common.Address]PoolBalanceMetaData
+}
+
 // NewHeads send a notification each time a new (header) block is appended to the chain.
 func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
@@ -225,6 +238,37 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 
 	rpcSub := notifier.CreateSubscription()
 
+	// create a map of ExchangeName -> Topics
+	//  those exchange names are copied from Ninja's codebase
+	var exchangeName_UniswapV2 string = "UniswapV2"
+	var exchangeName_UniswapV3 string = "UniswapV3"
+	var exchangeName_BalancerV2 string = "BalancerV2"
+	// var exchangeName_Curve string = "Curve"
+	// var exchangeName_OneInchV2 string = "OneInchV2"
+	mapOfExchangeNameToTopics := make(map[string][]common.Hash)
+	mapOfExchangeNameToTopics[exchangeName_UniswapV3] = []common.Hash{
+		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"),  // univ3 swap
+		common.HexToHash("0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde"),  // univ3 mint
+		common.HexToHash("0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c"),  // univ3 burn
+	}
+	mapOfExchangeNameToTopics[exchangeName_UniswapV2] = []common.Hash{
+		common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"),	// uniswapV2 sync
+	}
+	mapOfExchangeNameToTopics[exchangeName_BalancerV2] = []common.Hash{
+		common.HexToHash("0x2170c741c41531aec20e7c107c24eecfdd15e69c9bb0a8dd37b1840b9e0b207b"),  // balancerV2 swap
+		common.HexToHash("0xe5ce249087ce04f05a957192435400fd97868dba0e6a4b4c049abf8af80dae78"),  // balancerV2 poolBalancesChanged
+	}
+	// print all the values of each key
+	for key, value := range mapOfExchangeNameToTopics {
+		fmt.Println("nickdebug NewHeads: mapOfExchangeNameToTopics: key: ", key, " value: ", value)
+	}
+
+	// Flatten the map values
+	var flattenedValues []common.Hash
+	for _, values := range mapOfExchangeNameToTopics {
+		flattenedValues = append(flattenedValues, values...)
+	}
+
 	go func() {
 		headers := make(chan *types.Header)
 		headersSub := api.events.SubscribeNewHeads(headers)
@@ -232,7 +276,52 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		for {
 			select {
 			case h := <-headers:
-				notifier.Notify(rpcSub.ID, h)
+				// fmt.Println("nickdebug NewHeads: got a new block and processing for sub")
+				blockHash := h.Hash()
+
+				filterCriteria := FilterCriteria{
+					BlockHash: &blockHash,
+					FromBlock: nil,
+					ToBlock:   nil,
+					Addresses: nil,
+					Topics: [][]common.Hash{flattenedValues},
+				}
+				
+				logs, err := api.GetLogs(ctx, filterCriteria)
+				if err != nil {
+					return
+				}
+
+				// process the logs and add them to the newHeadsWithPoolBalanceMetaData
+				newHeadsWithPoolBalanceMetaData := NewHeadsWithPoolBalanceMetaData{
+					Header: h,
+					PoolBalanceMetaData: make(map[common.Address]PoolBalanceMetaData),
+				}
+				for _, log := range logs {
+					address := log.Address
+					logTopic := log.Topics[0]
+					// TODO nick-smc here wae want to call the pool directly and get the balanceMetaData
+					balanceMetaData := hexutil.Bytes{}
+					// find the right exchange by looking at the log topic
+					var topicExchangeName string
+					for exchangeName, topics := range mapOfExchangeNameToTopics {
+						for _, topic := range topics {
+							if topic == logTopic {
+								topicExchangeName = exchangeName
+							}
+						}
+					}
+					poolBalanceMetaData := PoolBalanceMetaData{
+						Address: address,
+						Topic: logTopic,
+						BalanceMetaData: balanceMetaData,
+						ExchangeName: topicExchangeName,
+					}
+					// add the poolBalanceMetaData to the newHeadsWithPoolBalanceMetaData
+					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[address] = poolBalanceMetaData
+					}
+
+				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
 				return
