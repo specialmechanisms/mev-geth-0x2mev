@@ -221,7 +221,7 @@ type PoolBalanceMetaData struct {
 	Address common.Address
 	Topic common.Hash
 	// TODO nick-smc not sure about the type here yet
-	BalanceMetaData hexutil.Bytes
+	BalanceMetaData interface{}
 }
 
 type NewHeadsWithPoolBalanceMetaData struct {
@@ -259,38 +259,6 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		common.HexToHash("0x2170c741c41531aec20e7c107c24eecfdd15e69c9bb0a8dd37b1840b9e0b207b"),  // balancerV2 swap
 		common.HexToHash("0xe5ce249087ce04f05a957192435400fd97868dba0e6a4b4c049abf8af80dae78"),  // balancerV2 poolBalancesChanged
 	}
-	// print all the values of each key
-	for key, value := range mapOfExchangeNameToTopics {
-		fmt.Println("nickdebug NewHeads: mapOfExchangeNameToTopics: key: ", key, " value: ", value)
-	}
-
-	// TODO nick lets call the smart contracts
-	// client, err := ethclient.Dial("http://localhost:8545")
-	// if err != nil {
-	// 	log.Fatalf("Failed to connect to the Ethereum client: %v", err)
-	// }
-	// // TODO nick have the ABIs in a separate file
-	// parsedABI, err := abi.JSON(strings.NewReader(ABI_UniswapV2)) // contractABI is a string of the contract's ABI
-	// if err != nil {
-	// 	log.Fatalf("Failed to parse contract ABI: %v", err)
-	// }
-	// var contractAddress common.Address = common.HexToAddress("0x775e4D9F7b97b0B67CaB8C953bEF80c5e194EbAF")
-	// instance := bind.NewBoundContract(contractAddress, parsedABI, client, client, client)
-
-	// // read a variable
-	// var result []interface{}
-	// callOpts := &bind.CallOpts{}
-	// err = instance.Call(callOpts, &result, "factory")
-	// if err != nil {
-	// 	log.Fatalf("Failed to retrieve value of variable: %v", err)
-	// }
-	// if len(result) > 0 {
-	// 	factoryAddress := result[0].(common.Address)
-	// 	fmt.Println("Factory address: ", factoryAddress.Hex())
-	// }
-
-	var result = GetBalanceMetaData_UniswapV2("0x6c5a7986f7439bbe91f1f09464fcf6535a1927d2")
-	fmt.Println("nickdebug NewHeads: result: ", result)
 
 	// Flatten the map values
 	var flattenedValues []common.Hash
@@ -330,7 +298,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					address := log.Address
 					logTopic := log.Topics[0]
 					// TODO nick-smc here wae want to call the pool directly and get the balanceMetaData
-					balanceMetaData := hexutil.Bytes{}
+					balanceMetaData := interface{}(nil)
 					// find the right exchange by looking at the log topic
 					var topicExchangeName string
 					for exchangeName, topics := range mapOfExchangeNameToTopics {
@@ -340,6 +308,19 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 							}
 						}
 					}
+					switch topicExchangeName {
+						case exchangeName_UniswapV2:
+							balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+						case exchangeName_UniswapV3:
+							balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+						}
+					if err != nil {
+						// TODO nick-smc this has to be made better
+						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName, 
+							"and address: ", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
+						balanceMetaData = interface{}(nil)
+					}
+
 					poolBalanceMetaData := PoolBalanceMetaData{
 						Address: address,
 						Topic: logTopic,
