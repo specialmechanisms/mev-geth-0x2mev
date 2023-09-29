@@ -336,7 +336,29 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					// add the poolBalanceMetaData to the newHeadsWithPoolBalanceMetaData
 					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[address] = poolBalanceMetaData
 					}
-
+					// get all the curve pool data
+					// TODO nick-smc maybe we do this in init?
+					allCurvePools, err := GetAllPools_Curve()
+					if err != nil {
+						fmt.Println("nickdebug NewHeads: error getting allCurvePools: ", err)
+					} else {					
+						fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
+					}
+					// iterate over allCurvePools and get the balanceMetaData for each pool
+					for _, pool := range allCurvePools {
+						balanceMetaData, err := GetBalanceMetaData_Curve(pool)
+						if err != nil {
+						} else {
+							poolAddress := common.HexToAddress(pool)
+							poolBalanceMetaData := PoolBalanceMetaData{
+								Address: poolAddress,
+								Topic: common.Hash{},
+								BalanceMetaData: balanceMetaData,
+								ExchangeName: "Curve",
+							}
+							newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+						}
+					}
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				fmt.Println("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 

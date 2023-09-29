@@ -97,7 +97,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 		token := addresses[i].Hex()
 		metaData.Tokens = append(metaData.Tokens, token)
 		balance_wei := balances[i]
-		balance_ether := ConvertWeiUnitsToEtherUnits(balance_wei, token)
+		balance_ether := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(balance_wei, token)
 		metaData.Balances = append(metaData.Balances, balance_ether)
 	}
 
@@ -110,7 +110,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	}
 	fee_bigInt := poolFee[0].(*big.Int)
 	// divide fee_bigInt by 1e18. i just use WETH contract here because it has 18 decimals 
-	metaData.Fee = ConvertWeiUnitsToEtherUnits(fee_bigInt, "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
+	metaData.Fee = ConvertWeiUnitsToEtherUnits_UsingTokenAddress(fee_bigInt, "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
 
 	// // 3. getPoolScalingFactors
 	var poolScalingFactors []interface{}
@@ -132,6 +132,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 
 	return metaData, poolAddress, nil
 }
+
 
 //	BEGIN UNISWAPV3 MULTICALL
 //
@@ -236,8 +237,97 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 
 	return metaData, nil
 }
-
 //  END UNISWAPV3 MULTICALL
+
+
+// start curve
+// we will just use a cache and get the balances every block
+// we will just return a float array with the ether units of the balances of the pool
+func GetBalanceMetaData_Curve(poolAddress string) ([]float64, error) {
+	tokens, decimals, err := GetTokensAndDecimals_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	callOpts := &bind.CallOpts{}
+	poolAddressConverted := common.HexToAddress(poolAddress)
+	balances_wei := make([]*big.Int, len(tokens))
+
+	for i, token := range tokens {
+		contractAddress := common.HexToAddress(token)
+		instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+
+		result := []interface{}{new(*big.Int)}
+		err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
+		if err != nil {
+			return nil, err
+		}
+		balances_wei[i] = *result[0].(**big.Int)
+	}
+
+	metaData := make([]float64, len(balances_wei))
+	for i, balance := range balances_wei {
+		metaData[i] = ConvertWeiUnitsToEtherUnits_UsingDecimals(balance, decimals[i])
+	}
+
+	return metaData, nil
+}
+
+func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
+	var data map[string]map[string]interface{}
+	err := json.Unmarshal([]byte(Cache_Curve), &data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	exchangeData, ok := data[exchange]
+	if !ok {
+		return nil, nil, fmt.Errorf("exchange not found")
+	}
+
+	tokensInterface, ok := exchangeData["tokens"].([]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("tokens not found or not an array")
+	}
+
+	tokens := make([]string, len(tokensInterface))
+	for i, v := range tokensInterface {
+		tokens[i] = v.(string)
+	}
+
+	decimalsInterface, ok := exchangeData["decimals"].([]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("decimals not found or not an array")
+	}
+
+	decimals := make([]int, len(decimalsInterface))
+	for i, v := range decimalsInterface {
+		decimals[i] = int(v.(float64))
+	}
+
+	return tokens, decimals, nil
+}
+
+// create a function that returns all curve pools in a list
+// use the curve cache to get the pools
+// pools are called exchange there
+func GetAllPools_Curve () ([]string, error) {
+	var pools []string
+
+	var data map[string]map[string]interface{}
+	err := json.Unmarshal([]byte(Cache_Curve), &data)
+	if err != nil {
+		return nil, err
+	}
+
+	for exchange := range data {
+		pools = append(pools, exchange)
+	}
+
+	return pools, nil
+}
+// END CURVE
+
 
 // TODO nick-smc i think i need to improve logging here
 func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
@@ -303,13 +393,13 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 		fmt.Printf("Failed to assert type: %v", err)
 		return metaData, fmt.Errorf("Failed to assert type: %v", err)
 	}
-	token0Reserves := ConvertWeiUnitsToEtherUnits(reserves0_bigInt, token0Address[0].(common.Address).Hex())
+	token0Reserves := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(reserves0_bigInt, token0Address[0].(common.Address).Hex())
 	reserves1_bigInt, ok := reserves[1].(*big.Int)
 	if !ok {
 		fmt.Printf("Failed to assert type: %v", err)
 		return metaData, fmt.Errorf("Failed to assert type: %v", err)
 	}
-	token1Reserves := ConvertWeiUnitsToEtherUnits(reserves1_bigInt, token1Address[0].(common.Address).Hex())
+	token1Reserves := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(reserves1_bigInt, token1Address[0].(common.Address).Hex())
 
 	metaData = append(metaData, token0Reserves)
 	metaData = append(metaData, token1Reserves)
@@ -317,8 +407,9 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 	return metaData, nil
 }
 
+// HELPER FUNCTIONS
 // create a function that takes in tokemAmount as a bigInt and token address and returns the balance in ether units
-func ConvertWeiUnitsToEtherUnits(tokenAmount *big.Int, tokenAddress string) float64 {
+func ConvertWeiUnitsToEtherUnits_UsingTokenAddress(tokenAmount *big.Int, tokenAddress string) float64 {
 	var contractAddress common.Address = common.HexToAddress(tokenAddress)
 	instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
 
@@ -332,6 +423,16 @@ func ConvertWeiUnitsToEtherUnits(tokenAmount *big.Int, tokenAddress string) floa
 
 	// convert tokenAmount that are in wei units to ether units using the decimals
 	tokenDecimals_float64 := float64(tokenDecimals[0].(uint8))
+	tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
+	tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, new(big.Float).Mul(big.NewFloat(math.Pow(10.0, tokenDecimals_float64)), big.NewFloat(1))).Float64()
+
+	return tokenAmount_etherUnits
+}
+
+// create a function that takes in tokemAmount as a bigInt and decimals as int and returns the balance in ether units
+func ConvertWeiUnitsToEtherUnits_UsingDecimals(tokenAmount *big.Int, decimals int) float64 {
+	// convert tokenAmount that are in wei units to ether units using the decimals
+	tokenDecimals_float64 := float64(decimals)
 	tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
 	tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, new(big.Float).Mul(big.NewFloat(math.Pow(10.0, tokenDecimals_float64)), big.NewFloat(1))).Float64()
 
