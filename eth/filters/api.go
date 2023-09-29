@@ -269,11 +269,11 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	go func() {
 		headers := make(chan *types.Header)
 		headersSub := api.events.SubscribeNewHeads(headers)
-
 		for {
 			select {
 			case h := <-headers:
-				// fmt.Println("nickdebug NewHeads: got a new block and processing for sub")
+				start := time.Now()
+				fmt.Println("nickdebug NewHeads: block number: ", h.Number)
 				blockHash := h.Hash()
 
 				filterCriteria := FilterCriteria{
@@ -283,7 +283,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					Addresses: nil,
 					Topics: [][]common.Hash{flattenedValues},
 				}
-				
+
 				logs, err := api.GetLogs(ctx, filterCriteria)
 				if err != nil {
 					return
@@ -297,9 +297,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				for _, log := range logs {
 					address := log.Address
 					logTopic := log.Topics[0]
-					// TODO nick-smc here wae want to call the pool directly and get the balanceMetaData
 					balanceMetaData := interface{}(nil)
-					// find the right exchange by looking at the log topic
 					var topicExchangeName string
 					for exchangeName, topics := range mapOfExchangeNameToTopics {
 						for _, topic := range topics {
@@ -308,15 +306,23 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 							}
 						}
 					}
+
 					switch topicExchangeName {
 						case exchangeName_UniswapV2:
 							balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
 						case exchangeName_UniswapV3:
 							balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+						case exchangeName_BalancerV2:
+							poolId := log.Topics[1]
+							balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+						default:
+							fmt.Println("nickdebug NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
 						}
 					if err != nil {
-						// TODO nick-smc this has to be made better
-						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName, 
+						// TODO nick-smc this has to be made better - do we want to just continue and skip the pool if there is an error?
+						// maybe we want to implement an error that tells us that the pool is not supported/we are not interested in it (i.e. because of wrong factory)
+						// so we can in that case skip the pool and handle the "error" in a better way
+						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName,
 							"and address: ", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
 						balanceMetaData = interface{}(nil)
 					}
@@ -332,6 +338,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					}
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
+				fmt.Println("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
+
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
 				return
