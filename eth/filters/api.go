@@ -259,6 +259,13 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		common.HexToHash("0x2170c741c41531aec20e7c107c24eecfdd15e69c9bb0a8dd37b1840b9e0b207b"),  // balancerV2 swap
 		common.HexToHash("0xe5ce249087ce04f05a957192435400fd97868dba0e6a4b4c049abf8af80dae78"),  // balancerV2 poolBalancesChanged
 	}
+	var exchangeName_OneInchV2 string = "OneInchV2"
+	mapOfExchangeNameToTopics[exchangeName_OneInchV2] = []common.Hash{
+		common.HexToHash("0x8bab6aed5a508937051a144e61d6e61336834a66aaee250a00613ae6f744c422"),  // OneInchV2 Deposited
+		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"),  // OneInchV2 Withdrawn
+		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"),  // OneInchV2 Swapped
+	}
+
 
 	// Flatten the map values
 	var flattenedValues []common.Hash
@@ -315,6 +322,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 						case exchangeName_BalancerV2:
 							poolId := log.Topics[1]
 							balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+						case exchangeName_OneInchV2:
+							balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
 						default:
 							fmt.Println("nickdebug NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
 						}
@@ -336,6 +345,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					// add the poolBalanceMetaData to the newHeadsWithPoolBalanceMetaData
 					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[address] = poolBalanceMetaData
 					}
+					// CURVE START
 					// get all the curve pool data
 					// TODO nick-smc maybe we do this in init?
 					allCurvePools, err := GetAllPools_Curve()
@@ -359,6 +369,36 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 							newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
 						}
 					}
+					// CURVE END
+
+					// // ONEINCH START
+					// TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
+					//  on prod we want to remove this
+					// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
+					// // get all the oneinch pool data
+					// allOneInchPools, err := GetAllPools_OneInchV2()
+					// if err != nil {
+					// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
+					// } else {
+					// 	fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
+					// }
+					// // iterate over allOneInchPools and get the balanceMetaData for each pool
+					// for _, pool := range allOneInchPools {
+					// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
+					// 	if err != nil {
+					// 	} else {
+					// 		poolAddress := common.HexToAddress(pool)
+					// 		poolBalanceMetaData := PoolBalanceMetaData{
+					// 			Address: poolAddress,
+					// 			Topic: common.Hash{},
+					// 			BalanceMetaData: balanceMetaData,
+					// 			ExchangeName: "OneInchV2",
+					// 		}
+					// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+					// 	}
+					// }
+					// // ONEINCH END
+
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				fmt.Println("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 

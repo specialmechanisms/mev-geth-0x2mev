@@ -21,6 +21,7 @@ var parsedABI_uniswapv3_multicall abi.ABI
 var parsedABI_uniswapv3_pool abi.ABI
 var parsedABI_balancerv2_vault abi.ABI
 var parsedABI_balancerv2_pool abi.ABI
+var parsedABI_OneInchV2_Mooniswap_Pool abi.ABI
 
 func init() {
 	var err error
@@ -49,11 +50,128 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to parse contract ABI: %v", err)
 	}
+	parsedABI_OneInchV2_Mooniswap_Pool, err = abi.JSON(strings.NewReader(ABI_OneInchV2_Mooniswap_Pool))
+	if err != nil {
+		log.Fatalf("Failed to parse contract ABI: %v", err)
+	}
 	parsedABI_ERC20, err = abi.JSON(strings.NewReader(ABI_ERC20))
 	if err != nil {
 		log.Fatalf("Failed to parse contract ABI: %v", err)
 	}
 }
+
+type MetaData_OneInchV2 struct {
+	Balance_token0_src float64
+	Balance_token1_src float64
+	Balance_token0_dst float64
+	Balance_token1_dst float64
+	ExchangeFee float64
+	ExchangeSlippageFee float64
+}
+
+// some pools are broken. this function helps us to filter them out
+func isDivisionByZeroError(err error) bool {
+	return strings.Contains(err.Error(), "SafeMath: division by zero")
+}
+
+func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error) {
+	var metaData MetaData_OneInchV2
+
+	instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(common.HexToAddress(poolAddress), parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
+
+	// Fetch the tokens from the pool
+	var rawTokensResponse []interface{}
+	callOpts := &bind.CallOpts{}
+	err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &rawTokensResponse, "getTokens")
+	if err != nil {
+		log.Println("Error fetching tokens from contract:", err)
+		return metaData, err
+	}
+
+	var tokens []common.Address
+	for _, rawTokenData := range rawTokensResponse {
+		addrSlice, ok := rawTokenData.([]common.Address)
+		if !ok {
+			log.Println("Error: Unexpected format for tokens in response")
+			continue
+		}
+		tokens = append(tokens, addrSlice...)
+	}
+
+	// Fetch balance details for each token
+	for _, token := range tokens {
+		// Get balance for addition
+		var balanceForAdditionResponse []interface{}
+		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForAdditionResponse, "getBalanceForAddition", token)
+		if err != nil {
+			if isDivisionByZeroError(err) {
+				log.Println("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				return metaData, nil  // Returning the current metaData without any further processing
+			}
+			return metaData, err  // For other errors
+		}
+
+		// Get balance for removal
+		var balanceForRemovalResponse []interface{}
+		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForRemovalResponse, "getBalanceForRemoval", token)
+		if err != nil {
+			if isDivisionByZeroError(err) {
+				log.Println("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				return metaData, nil  // Returning the current metaData without any further processing
+			}
+			return metaData, err  // For other errors
+		}
+
+		// Check if token represents ether and convert accordingly
+		if token.Hex() == "0x0000000000000000000000000000000000000000" || token.Hex() == "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" {
+			metaData.Balance_token0_src = ConvertWeiUnitsToEtherUnits_UsingDecimals(balanceForAdditionResponse[0].(*big.Int), 18)
+			metaData.Balance_token0_dst = ConvertWeiUnitsToEtherUnits_UsingDecimals(balanceForRemovalResponse[0].(*big.Int), 18)
+		} else {
+			metaData.Balance_token1_src = ConvertWeiUnitsToEtherUnits_UsingTokenAddress(balanceForAdditionResponse[0].(*big.Int), token.Hex())
+			metaData.Balance_token1_dst = ConvertWeiUnitsToEtherUnits_UsingTokenAddress(balanceForRemovalResponse[0].(*big.Int), token.Hex())
+		}
+	}
+
+	// Fetch exchange fee
+	var exchangeFeeResponse []interface{}
+	err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &exchangeFeeResponse, "fee")
+	if err != nil {
+		return metaData, err
+	}
+	metaData.ExchangeFee = ConvertWeiUnitsToEtherUnits_UsingDecimals(exchangeFeeResponse[0].(*big.Int), 18)
+
+	// Fetch slippage fee
+	var slippageFeeResponse []interface{}
+	err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &slippageFeeResponse, "slippageFee")
+	if err != nil {
+		return metaData, err
+	}
+	metaData.ExchangeSlippageFee = ConvertWeiUnitsToEtherUnits_UsingDecimals(slippageFeeResponse[0].(*big.Int), 18)
+
+	return metaData, nil
+}
+
+// this is a helper function we need for debugging OneInchV2, because events are super rare we can actually just use the cache to call all pools and debug them
+func GetAllPools_OneInchV2() ([]string, error) {
+	var pools []string
+
+	var data map[string]map[string]interface{}
+	err := json.Unmarshal([]byte(Cache_OneInchV2), &data)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range data {
+		if exchange, ok := item["exchange"].(string); ok {
+			pools = append(pools, exchange)
+		} else {
+			return nil, fmt.Errorf("missing or invalid exchange field in item")
+		}
+	}
+
+	return pools, nil
+}
+
 
 type MetaData_BalancerV2 struct {
 	Address        string
@@ -65,7 +183,7 @@ type MetaData_BalancerV2 struct {
 
 func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, common.Address, error) {
 	// the event gets fired on the vault contract and not on the pool.
-	// we will get the poolAddress from the poolId and return the poolAddres the address of PoolBalanceMetaData struct outside this function can get updated
+	// we will get the poolAddress from the poolId and return the poolAddress the address of PoolBalanceMetaData struct outside this function can get updated
 	var metaData MetaData_BalancerV2
 
 	var vaultAddress common.Address = common.HexToAddress("0xBA12222222228d8Ba445958a75a0704d566BF2C8")
