@@ -17,6 +17,7 @@
 package filters
 
 import (
+	"runtime"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var (
@@ -229,23 +231,30 @@ type NewHeadsWithPoolBalanceMetaData struct {
 	PoolBalanceMetaData map[common.Address]PoolBalanceMetaData
 }
 
-// NewHeads send a notification each time a new (header) block is appended to the chain.
-func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
-	notifier, supported := rpc.NotifierFromContext(ctx)
-	if !supported {
-		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
-	}
-
-	rpcSub := notifier.CreateSubscription()
-
+// TODO nick maybe we want to move this to the top of the file
+var exchangeName_UniswapV2 string
+var exchangeName_UniswapV3 string
+var exchangeName_BalancerV2 string
+var exchangeName_OneInchV2 string
+var mapOfExchangeNameToTopics = make(map[string][]common.Hash)
+// TODO nick give this a better name
+var flattenedValues []common.Hash
+var numWorkers int
+var allCurvePools []string
+var err error
+func init() {
+	numWorkers = runtime.NumCPU() - 1
+    if numWorkers < 1 {
+        numWorkers = 1 // Ensure at least one worker
+    }
 	// create a map of ExchangeName -> Topics
 	//  those exchange names are copied from Ninja's codebase
-	var exchangeName_UniswapV2 string = "UniswapV2"
-	var exchangeName_UniswapV3 string = "UniswapV3"
-	var exchangeName_BalancerV2 string = "BalancerV2"
+	exchangeName_UniswapV2 = "UniswapV2"
+	exchangeName_UniswapV3 = "UniswapV3"
+	exchangeName_BalancerV2 = "BalancerV2"
 	// var exchangeName_Curve string = "Curve"
-	// var exchangeName_OneInchV2 string = "OneInchV2"
-	mapOfExchangeNameToTopics := make(map[string][]common.Hash)
+	exchangeName_OneInchV2 = "OneInchV2"
+
 	mapOfExchangeNameToTopics[exchangeName_UniswapV3] = []common.Hash{
 		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"),  // univ3 swap
 		common.HexToHash("0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde"),  // univ3 mint
@@ -265,13 +274,99 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"),  // OneInchV2 Withdrawn
 		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"),  // OneInchV2 Swapped
 	}
-
-
 	// Flatten the map values
-	var flattenedValues []common.Hash
 	for _, values := range mapOfExchangeNameToTopics {
 		flattenedValues = append(flattenedValues, values...)
 	}
+	allCurvePools, err = GetAllPools_Curve()
+	if err != nil {
+		fmt.Println("nickdebug NewHeads: error getting allCurvePools: ", err)
+	} else {
+		fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
+	}
+
+}
+
+// curveWorker processes Curve pools to fetch balance metadata.
+func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData) {
+    for pool := range pools {
+        // Fetch balance metadata for the Curve pool
+        balanceMetaData, err := GetBalanceMetaData_Curve(pool)
+        if err != nil {
+            // Handle error, perhaps log it
+            fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
+            continue
+        }
+
+        // Create PoolBalanceMetaData object
+        poolAddress := common.HexToAddress(pool)
+        poolBalanceMetaData := PoolBalanceMetaData{
+            Address:        poolAddress,
+            Topic:          common.Hash{}, // No topic for Curve in this example
+            BalanceMetaData: balanceMetaData,
+            ExchangeName:    "Curve",
+        }
+
+        // Send the result back
+        results <- poolBalanceMetaData
+    }
+}
+
+// Assuming that GetLogs returns []*types.Log
+type Log = types.Log  // Reusing the type from GetLogs
+func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData) {
+    for log := range logs {
+        address := log.Address
+        logTopic := log.Topics[0]
+        balanceMetaData := interface{}(nil)
+        var topicExchangeName string
+        for exchangeName, topics := range mapOfExchangeNameToTopics {
+            for _, topic := range topics {
+                if topic == logTopic {
+                    topicExchangeName = exchangeName
+                    break
+                }
+            }
+        }
+
+        var err error
+        switch topicExchangeName {
+        case exchangeName_UniswapV2:
+            balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+        case exchangeName_UniswapV3:
+            balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+        case exchangeName_BalancerV2:
+            poolId := log.Topics[1]
+            balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+        case exchangeName_OneInchV2:
+            balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+        default:
+            fmt.Println("nickdebug NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
+        }
+        if err != nil {
+            fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName,
+                "and address: ", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
+            balanceMetaData = interface{}(nil)
+        }
+
+        poolBalanceMetaData := PoolBalanceMetaData{
+            Address: address,
+            Topic: logTopic,
+            BalanceMetaData: balanceMetaData,
+            ExchangeName: topicExchangeName,
+        }
+        results <- poolBalanceMetaData
+    }
+}
+
+// NewHeads send a notification each time a new (header) block is appended to the chain.
+func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
 
 	go func() {
 		headers := make(chan *types.Header)
@@ -280,7 +375,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 			select {
 			case h := <-headers:
 				start := time.Now()
-				fmt.Println("nickdebug NewHeads: block number: ", h.Number)
+				log.Info("NewHeads: new block found", "block number", h.Number)
 				blockHash := h.Hash()
 
 				filterCriteria := FilterCriteria{
@@ -296,111 +391,75 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					return
 				}
 
-				// process the logs and add them to the newHeadsWithPoolBalanceMetaData
+				// Create channels for logs and results
+				logChan := make(chan *types.Log, 100)  // Channel to send logs to logWorkers
+				results := make(chan PoolBalanceMetaData, 100)  // Channel to collect results
+
+				// Start logWorkers
+				for w := 1; w <= numWorkers; w++ {
+					go logWorker(w, logChan, results)
+				}
+
+				// Send logs to the logChan channel
+				for _, log := range logs {
+					logChan <- log
+				}
+				close(logChan)
+
+				// Collect results from logWorkers
 				newHeadsWithPoolBalanceMetaData := NewHeadsWithPoolBalanceMetaData{
 					Header: h,
 					PoolBalanceMetaData: make(map[common.Address]PoolBalanceMetaData),
 				}
-				for _, log := range logs {
-					address := log.Address
-					logTopic := log.Topics[0]
-					balanceMetaData := interface{}(nil)
-					var topicExchangeName string
-					for exchangeName, topics := range mapOfExchangeNameToTopics {
-						for _, topic := range topics {
-							if topic == logTopic {
-								topicExchangeName = exchangeName
-							}
-						}
-					}
 
-					switch topicExchangeName {
-						case exchangeName_UniswapV2:
-							balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
-						case exchangeName_UniswapV3:
-							balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
-						case exchangeName_BalancerV2:
-							poolId := log.Topics[1]
-							balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
-						case exchangeName_OneInchV2:
-							balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
-						default:
-							fmt.Println("nickdebug NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
-						}
-					if err != nil {
-						// TODO nick-smc this has to be made better - do we want to just continue and skip the pool if there is an error?
-						// maybe we want to implement an error that tells us that the pool is not supported/we are not interested in it (i.e. because of wrong factory)
-						// so we can in that case skip the pool and handle the "error" in a better way
-						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName,
-							"and address: ", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
-						balanceMetaData = interface{}(nil)
-					}
+				for i := 0; i < len(logs); i++ {
+					result := <-results
+					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+				}
 
-					poolBalanceMetaData := PoolBalanceMetaData{
-						Address: address,
-						Topic: logTopic,
-						BalanceMetaData: balanceMetaData,
-						ExchangeName: topicExchangeName,
-					}
-					// add the poolBalanceMetaData to the newHeadsWithPoolBalanceMetaData
-					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[address] = poolBalanceMetaData
-					}
-					// CURVE START
-					// get all the curve pool data
-					// TODO nick-smc maybe we do this in init?
-					allCurvePools, err := GetAllPools_Curve()
-					if err != nil {
-						fmt.Println("nickdebug NewHeads: error getting allCurvePools: ", err)
-					} else {					
-						fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
-					}
-					// iterate over allCurvePools and get the balanceMetaData for each pool
-					for _, pool := range allCurvePools {
-						balanceMetaData, err := GetBalanceMetaData_Curve(pool)
-						if err != nil {
-						} else {
-							poolAddress := common.HexToAddress(pool)
-							poolBalanceMetaData := PoolBalanceMetaData{
-								Address: poolAddress,
-								Topic: common.Hash{},
-								BalanceMetaData: balanceMetaData,
-								ExchangeName: "Curve",
-							}
-							newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-						}
-					}
-					// CURVE END
+				// Start Curve workers
+				curvePoolsChan := make(chan string, 100)
+				curveResults := make(chan PoolBalanceMetaData, 100)
+				for w := 1; w <= numWorkers; w++ {
+					go curveWorker(w, curvePoolsChan, curveResults)
+				}
 
-					// // ONEINCH START
-					// TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
-					//  on prod we want to remove this
-					// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
-					// // get all the oneinch pool data
-					// allOneInchPools, err := GetAllPools_OneInchV2()
-					// if err != nil {
-					// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
-					// } else {
-					// 	fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
-					// }
-					// // iterate over allOneInchPools and get the balanceMetaData for each pool
-					// for _, pool := range allOneInchPools {
-					// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
-					// 	if err != nil {
-					// 	} else {
-					// 		poolAddress := common.HexToAddress(pool)
-					// 		poolBalanceMetaData := PoolBalanceMetaData{
-					// 			Address: poolAddress,
-					// 			Topic: common.Hash{},
-					// 			BalanceMetaData: balanceMetaData,
-					// 			ExchangeName: "OneInchV2",
-					// 		}
-					// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-					// 	}
-					// }
-					// // ONEINCH END
+				// Populate the curvePoolsChan with the global list of all Curve pools
+				for _, pool := range allCurvePools {
+					curvePoolsChan <- pool
+				}
+
+				// // ONEINCH START
+				// TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
+				//  on prod we want to remove this
+				// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
+				// // get all the oneinch pool data
+				// allOneInchPools, err := GetAllPools_OneInchV2()
+				// if err != nil {
+				// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
+				// } else {
+				// 	fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
+				// }
+				// // iterate over allOneInchPools and get the balanceMetaData for each pool
+				// for _, pool := range allOneInchPools {
+				// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
+				// 	if err != nil {
+				// 	} else {
+				// 		poolAddress := common.HexToAddress(pool)
+				// 		poolBalanceMetaData := PoolBalanceMetaData{
+				// 			Address: poolAddress,
+				// 			Topic: common.Hash{},
+				// 			BalanceMetaData: balanceMetaData,
+				// 			ExchangeName: "OneInchV2",
+				// 		}
+				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+				// 	}
+				// }
+				// // ONEINCH END
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
-				fmt.Println("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
+				// log.Info("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
+				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
 
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
