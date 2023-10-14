@@ -243,6 +243,7 @@ var numWorkers int
 var allCurvePools []string
 var err error
 func init() {
+	fmt.Println("nickdebug NewHeads: init() called - h1d0923")
 	numWorkers = runtime.NumCPU() - 1
     if numWorkers < 1 {
         numWorkers = 1 // Ensure at least one worker
@@ -441,33 +442,33 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
 				}
 
-				// // ONEINCH START
+				// ONEINCH DEBUG START
 				// TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
 				//  on prod we want to remove this
-				// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
-				// // get all the oneinch pool data
-				// allOneInchPools, err := GetAllPools_OneInchV2()
-				// if err != nil {
-				// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
-				// } else {
-				// 	fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
-				// }
-				// // iterate over allOneInchPools and get the balanceMetaData for each pool
-				// for _, pool := range allOneInchPools {
-				// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
-				// 	if err != nil {
-				// 	} else {
-				// 		poolAddress := common.HexToAddress(pool)
-				// 		poolBalanceMetaData := PoolBalanceMetaData{
-				// 			Address: poolAddress,
-				// 			Topic: common.Hash{},
-				// 			BalanceMetaData: balanceMetaData,
-				// 			ExchangeName: "OneInchV2",
-				// 		}
-				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-				// 	}
-				// }
-				// // ONEINCH END
+				// TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
+				// get all the oneinch pool data
+				allOneInchPools, err := GetAllPools_OneInchV2()
+				if err != nil {
+					fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
+				} else {
+					fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
+				}
+				// iterate over allOneInchPools and get the balanceMetaData for each pool
+				for _, pool := range allOneInchPools {
+					balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
+					if err != nil {
+					} else {
+						poolAddress := common.HexToAddress(pool)
+						poolBalanceMetaData := PoolBalanceMetaData{
+							Address: poolAddress,
+							Topic: common.Hash{},
+							BalanceMetaData: balanceMetaData,
+							ExchangeName: "OneInchV2",
+						}
+						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+					}
+				}
+				// ONEINCH END
 
 				wg.Wait()  // Wait for all workers to finish
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
