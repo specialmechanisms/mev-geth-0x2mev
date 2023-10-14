@@ -369,6 +369,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
+		var wg sync.WaitGroup
 		headers := make(chan *types.Header)
 		headersSub := api.events.SubscribeNewHeads(headers)
 		for {
@@ -394,18 +395,19 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// Create channels for logs and results
 				logChan := make(chan *types.Log, 100)  // Channel to send logs to logWorkers
 				results := make(chan PoolBalanceMetaData, 100)  // Channel to collect results
-
 				// Start logWorkers
 				for w := 1; w <= numWorkers; w++ {
-					go logWorker(w, logChan, results)
+					wg.Add(1)  // Add to the WaitGroup counter
+					go func(id int) {
+						logWorker(id, logChan, results)
+						wg.Done()  // Decrement the counter when the goroutine completes
+					}(w)
 				}
-
 				// Send logs to the logChan channel
 				for _, log := range logs {
 					logChan <- log
 				}
 				close(logChan)
-
 				// Collect results from logWorkers
 				newHeadsWithPoolBalanceMetaData := NewHeadsWithPoolBalanceMetaData{
 					Header: h,
@@ -417,16 +419,26 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
 				}
 
+				// Create channels for Curve pools and results
+				curvePoolsChan := make(chan string, 100)  // Channel to send Curve pools to curveWorkers
+				curveResults := make(chan PoolBalanceMetaData, 100)  // Channel to collect results from curveWorkers
 				// Start Curve workers
-				curvePoolsChan := make(chan string, 100)
-				curveResults := make(chan PoolBalanceMetaData, 100)
 				for w := 1; w <= numWorkers; w++ {
-					go curveWorker(w, curvePoolsChan, curveResults)
+					wg.Add(1)
+					go func(id int) {
+						curveWorker(id, curvePoolsChan, curveResults)
+						wg.Done()
+					}(w)
 				}
-
 				// Populate the curvePoolsChan with the global list of all Curve pools
 				for _, pool := range allCurvePools {
 					curvePoolsChan <- pool
+				}
+				close(curvePoolsChan)
+				// Collect results from Curve workers
+				for i := 0; i < len(allCurvePools); i++ {
+					result := <-curveResults
+					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
 				}
 
 				// // ONEINCH START
@@ -457,6 +469,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// }
 				// // ONEINCH END
 
+				wg.Wait()  // Wait for all workers to finish
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				// log.Info("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
