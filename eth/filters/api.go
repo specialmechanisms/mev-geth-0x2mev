@@ -456,6 +456,11 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// iterate over allOneInchPools and get the balanceMetaData for each pool
 				for _, pool := range allOneInchPools {
 					balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
+					// check if one of the balances inside balanceMetaData is 0. if so then skip this pool
+					if balanceMetaData.Balance_token0_dst == 0 || balanceMetaData.Balance_token1_dst == 0  || balanceMetaData.Balance_token0_src == 0 || balanceMetaData.Balance_token1_src == 0{
+						// fmt.Println("nickdebug NewHeads: skipping pool because one of the balances is 0: ", pool)
+						continue
+					}
 					if err != nil {
 					} else {
 						poolAddress := common.HexToAddress(pool)

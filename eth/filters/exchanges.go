@@ -122,7 +122,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 			return metaData, err  // For other errors
 		}
 
-		// Check if token represents ether and convert accordingly
+		// converting to ether units
 		if token.Hex() == "0x0000000000000000000000000000000000000000" || token.Hex() == "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" {
 			metaData.Balance_token0_src = ConvertWeiUnitsToEtherUnits_UsingDecimals(balanceForAdditionResponse[0].(*big.Int), 18)
 			metaData.Balance_token0_dst = ConvertWeiUnitsToEtherUnits_UsingDecimals(balanceForRemovalResponse[0].(*big.Int), 18)
@@ -361,8 +361,39 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 // start curve
 // we will just use a cache and get the balances every block
 // we will just return a float array with the ether units of the balances of the pool
-func GetBalanceMetaData_Curve(poolAddress string) ([]float64, error) {
-	tokens, decimals, err := GetTokensAndDecimals_Curve(poolAddress)
+// func GetBalanceMetaData_Curve(poolAddress string) ([]float64, error) {
+// 	tokens, decimals, err := GetTokensAndDecimals_Curve(poolAddress)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	callOpts := &bind.CallOpts{}
+// 	poolAddressConverted := common.HexToAddress(poolAddress)
+// 	balances_wei := make([]*big.Int, len(tokens))
+
+// 	for i, token := range tokens {
+// 		contractAddress := common.HexToAddress(token)
+// 		instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+
+// 		result := []interface{}{new(*big.Int)}
+// 		err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		balances_wei[i] = *result[0].(**big.Int)
+// 	}
+
+// 	metaData := make([]float64, len(balances_wei))
+// 	for i, balance := range balances_wei {
+// 		metaData[i] = ConvertWeiUnitsToEtherUnits_UsingDecimals(balance, decimals[i])
+// 	}
+
+// 	return metaData, nil
+// }
+
+// modified version that returns the balances in wei
+func GetBalanceMetaData_Curve(poolAddress string) ([]*big.Int, error) {
+	tokens, _, err := GetTokensAndDecimals_Curve(poolAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -383,13 +414,10 @@ func GetBalanceMetaData_Curve(poolAddress string) ([]float64, error) {
 		balances_wei[i] = *result[0].(**big.Int)
 	}
 
-	metaData := make([]float64, len(balances_wei))
-	for i, balance := range balances_wei {
-		metaData[i] = ConvertWeiUnitsToEtherUnits_UsingDecimals(balance, decimals[i])
-	}
-
-	return metaData, nil
+	// No need to convert to Ether units, just return the balances in Wei
+	return balances_wei, nil
 }
+
 
 func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
 	var data map[string]map[string]interface{}
