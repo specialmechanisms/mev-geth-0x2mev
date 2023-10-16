@@ -3,11 +3,11 @@ package filters
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,42 +22,49 @@ var parsedABI_uniswapv3_pool abi.ABI
 var parsedABI_balancerv2_vault abi.ABI
 var parsedABI_balancerv2_pool abi.ABI
 var parsedABI_OneInchV2_Mooniswap_Pool abi.ABI
+var blacklistArray_OneinchV2 []string
+var blacklist_OneinchV2 map[string]bool
 
 func init() {
 	var err error
 	client, err = ethclient.Dial("http://localhost:8545")
 	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+		log.Error("Failed to connect to the Ethereum client: %v", err)
 	}
 
 	parsedABI_uniswapv2, err = abi.JSON(strings.NewReader(ABI_UniswapV2))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_uniswapv3_multicall, err = abi.JSON(strings.NewReader(ABI_UniswapV3_Multicall))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_uniswapv3_pool, err = abi.JSON(strings.NewReader(ABI_UniswapV3_Pool))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_balancerv2_vault, err = abi.JSON(strings.NewReader(ABI_BalancerV2_Vault))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_balancerv2_pool, err = abi.JSON(strings.NewReader(ABI_BalancerV2_WeightedPool))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_OneInchV2_Mooniswap_Pool, err = abi.JSON(strings.NewReader(ABI_OneInchV2_Mooniswap_Pool))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_ERC20, err = abi.JSON(strings.NewReader(ABI_ERC20))
 	if err != nil {
-		log.Fatalf("Failed to parse contract ABI: %v", err)
+		log.Error("Failed to parse contract ABI: %v", err)
 	}
+
+	// those pools are bugged, never have any TXs on it and cause div by zero errors which slows down the node and sometimes even crashes it
+	blacklistArray_OneinchV2 = []string{"0x22c6289db7e8eab6aa12c35a044410327c4d9f93", "0x642eef38c4a9bad89c264e8b567ab81b42373c09", "0xb30116c66483fd87de3cbe14e7e0a764b632e5ca", "0x3d1a7a585c5e6ce429e8bd74b2f44db3b643462d", "0x1a5dab604981cb24980b6b6646718f832ec7af3c", "0xf3cd77de1b99610441978bf542cae7d58673fb7d", "0xfde1ba8b3ef2d8a9d2e1665deb62a1a49fd4e4d1", "0xcad46eff448e22802359488b5873f5886242e438", "0xe64f91911883ea26c146fb094fab5dcec14a0925", "0xa7363cf21b379865eb04475e70901bc2fe0dbb5d", "0x5c2e1346c91313d55c6573276ba797e0d56f1b8e", "0x12e7d705025d5e5bd465d4153c1425cad5cefeb3", "0xd138b94dd76a63ed6683764760d030ee1f6017d7", "0x9cc0bf948954f90877624c09d2c5a28b0d40b2f7", "0x2c8b7fb5814c878805dc09544594977af1c0c3c2", "0x71c6e39a7945df102e9ef5d9f3534d3ca923d8f4", "0x339f882e761cb568127a674b61a4a835e2b97975", "0x713749988b4c6ed072fdc8c9063d0d10432f4743", "0xce7ae35e05ba226dcdd2ed23c974b7f90744c6d9", "0x0f0e6e11dccb4d08cd3e0e6501a9e5bd4fba94b8", "0xca6993d4a4e1ae19f98e64ee4069c43d759461ee", "0x611fcab149b34b857e8526cd1500c92f6ecae313", "0x5b445e5c775c93cddde2f307032dcb6efac6a594", "0x90f2fad22c3796ce5ac3a466e9a6c707bf72b512", "0xefa579e56923b876880c376280563b4d0232d2d1", "0x062d37257479435da4ba3c0a8c2e376da027e29b", "0x335565d37ac8554fe16dcb817514150d3059da1c", "0xb4cc12a091ff1778d19fd13461265dacb3f1599c", "0x45187b597f55a9bd9ef218bd833a4ac102d8ed34", "0x70c34a9b4d7a5c16f902a5274f9fb7ac18908daf", "0x98bdf79efc11a58bfe349ade4df8073cc452e283", "0x653a191f7b41319c4931f40c5b2e8b5c7bacc5b1", "0x4f339ff82ecf7efb987534df98602d0fafa4680f", "0xaf9f860bf2e67bd5227c04a8978d851740e94af3", "0x52959f4fd37c2e1f1ef45d48b9135fb523e0f831", "0xae1cddedd0320a6cadb1075d8094df2beb056bac", "0xc2946d6c8698cb0276b711757380d3ba43663576", "0x24df89e467b134a860c72f291297edd4e6f82c73", "0x084f67f06518572adf435d12abdfb455acaa90a1", "0x4020819c2c96962460fd1ce0c1eba8a52747d4a5", "0x6023cbb069ccbda746340e65e2b3094558e50d7d", "0xb2a26335f7215748f28001cf3c64dc5fadc9de43", "0x1a33e47f47318e5879998493e9de89966370fcb7", "0x18677c37f4142127598c872054e4dbb8cfbee202", "0x30e5d83276bc7ae54cb448df93e80212944d9ee9", "0x89bff5e0aec73979caac7ee2aa8c9a9773e3c9e0", "0x386b3ac9afab9e0f8a39d4cdd1585bcbda165f85", "0xfce443acd6aad3ea497dff392249bc75093d160f", "0x51a6315bf905b973409888dfd69a9958ae1982bf", "0x5267065e406cca5647551fd0239841bd280c1332", "0x94eb287e8b23908307b046dde327dc9feb8595fe", "0x57b7e58e427831a1a0fc0ceef11b21459c35ba3c", "0x304dceb0fabbafc08c02adcf492ddfc26a48f5ee", "0x2bc4b2bd0eab774a12e2a42df214cee1676bb6ff", "0xd688123dfffcb9c215def2ce6aa503f6e55717a7", "0xfebbe4cccbad7c6d6cff6272b1f3ad36bb1cc798", "0xa097d9d3a67b4b5cefe75fb97b6e817fb78b12d7", "0x9ac1359e4e70cfe77bb33fa659f809afefd7c64f", "0x23ecf94669570778afe5b14c8c320f285da42550", "0xe07c3809ac9fedebe249c8fdfc7615dc4c4cec60", "0x358a9447ee1d23b3995b70442d02dec221a7a7b9", "0x036d35985c250f394ae590807a27018aae225c2a"}
+	// Create a map for constant-time lookups
+	blacklist_OneinchV2 = make(map[string]bool)
 }
 
 type MetaData_OneInchV2 struct {
@@ -84,7 +91,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 	callOpts := &bind.CallOpts{}
 	err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &rawTokensResponse, "getTokens")
 	if err != nil {
-		log.Println("Error fetching tokens from contract:", err)
+		log.Info("Error fetching tokens from contract:", err)
 		return metaData, err
 	}
 
@@ -92,7 +99,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 	for _, rawTokenData := range rawTokensResponse {
 		addrSlice, ok := rawTokenData.([]common.Address)
 		if !ok {
-			log.Println("Error: Unexpected format for tokens in response")
+			log.Info("Error: Unexpected format for tokens in response")
 			continue
 		}
 		tokens = append(tokens, addrSlice...)
@@ -105,7 +112,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForAdditionResponse, "getBalanceForAddition", token)
 		if err != nil {
 			if isDivisionByZeroError(err) {
-				log.Println("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
 				return metaData, nil  // Returning the current metaData without any further processing
 			}
 			return metaData, err  // For other errors
@@ -116,7 +123,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForRemovalResponse, "getBalanceForRemoval", token)
 		if err != nil {
 			if isDivisionByZeroError(err) {
-				log.Println("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
 				return metaData, nil  // Returning the current metaData without any further processing
 			}
 			return metaData, err  // For other errors
@@ -151,9 +158,13 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 	return metaData, nil
 }
 
-// this is a helper function we need for debugging OneInchV2, because events are super rare we can actually just use the cache to call all pools and debug them
 func GetAllPools_OneInchV2() ([]string, error) {
 	var pools []string
+
+	// Populate the blacklist map from the array
+	for _, pool := range blacklistArray_OneinchV2 {
+		blacklist_OneinchV2[pool] = true
+	}
 
 	var data map[string]map[string]interface{}
 	err := json.Unmarshal([]byte(Cache_OneInchV2), &data)
@@ -163,7 +174,10 @@ func GetAllPools_OneInchV2() ([]string, error) {
 
 	for _, item := range data {
 		if exchange, ok := item["exchange"].(string); ok {
-			pools = append(pools, exchange)
+			// Check if the pool is in the blacklist
+			if _, isBlacklisted := blacklist_OneinchV2[exchange]; !isBlacklisted {
+				pools = append(pools, exchange)
+			}
 		} else {
 			return nil, fmt.Errorf("missing or invalid exchange field in item")
 		}
@@ -171,6 +185,7 @@ func GetAllPools_OneInchV2() ([]string, error) {
 
 	return pools, nil
 }
+
 
 
 type MetaData_BalancerV2 struct {
@@ -205,7 +220,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	callOpts := &bind.CallOpts{}
 	err := instance_balancerv2_vault.Call(callOpts, &tokensAndBalances, "getPoolTokens", poolId)
 	if err != nil {
-		log.Println("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
 		return metaData, poolAddress, err
 	}
 	addresses := tokensAndBalances[0].([]common.Address)
@@ -223,7 +238,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	var poolFee []interface{}
 	err = instance_balancerv2_weightedPool.Call(callOpts, &poolFee, "getSwapFeePercentage")
 	if err != nil {
-		log.Println("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
 		return metaData, poolAddress, err
 	}
 	fee_bigInt := poolFee[0].(*big.Int)
@@ -235,13 +250,13 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	err = instance_balancerv2_weightedPool.Call(callOpts, &poolScalingFactors, "getScalingFactors")
 	if err != nil {
 		if strings.Contains(err.Error(), "execution reverted") {
-			log.Println("The above execution reverted warning can be ignored. it is handled in the code and expected to happen.")
+			log.Info("The above execution reverted warning can be ignored. it is handled in the code and expected to happen.")
 			// The getScalingFactors function doesn't exist for this pool.
 			// Continue without logging an error.
 			metaData.ScalingFactors = nil // Explicitly set ScalingFactors to nil
 		} else {
 			// An unexpected error occurred.
-			log.Println("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+			log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
 			return metaData, poolAddress, err
 		}
 	} else {
@@ -308,7 +323,6 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	poolFactoryAddress := response_factoryCall.Hex()
 	if poolFactoryAddress != uniswapV3FactoryAddress {
 		err = fmt.Errorf("poolAddress is not a uniswapV3 pool")
-		log.Println(err)
 		return metaData, err
 	}
 
@@ -316,13 +330,12 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	getNAdjacentTickWordsInBothDirections := uint16(20)
 	err = instance_uniswapV3_multicall.Call(callOpts, &response, "getExchangePriceInputData", poolAddressConverted, getNAdjacentTickWordsInBothDirections)
 	if err != nil {
-		log.Println("GetBalanceMetaData_UniswapV3: Failed to retrieve value of variable:", err)
+		log.Info("GetBalanceMetaData_UniswapV3: Failed to retrieve value of variable:", err)
 		return metaData, err
 	}
 
 	if len(response) == 0 {
 		err = fmt.Errorf("response is empty")
-		log.Println(err)
 		return metaData, err
 	}
 
@@ -330,14 +343,14 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	var contractResponse ContractResponse
 	bytes, err := json.Marshal(response[0])
 	if err != nil {
-		log.Println("GetBalanceMetaData_UniswapV3: failed to marshal response[0]:", err)
+		log.Info("GetBalanceMetaData_UniswapV3: failed to marshal response[0]:", err)
 		return metaData, err
 	}
 
 	// Unmarshal the JSON bytes into a ContractResponse struct
 	err = json.Unmarshal(bytes, &contractResponse)
 	if err != nil {
-		log.Println("GetBalanceMetaData_UniswapV3: failed to unmarshal into ContractResponse:", err)
+		log.Info("GetBalanceMetaData_UniswapV3: failed to unmarshal into ContractResponse:", err)
 		return metaData, err
 	}
 
@@ -564,7 +577,7 @@ func ConvertWeiUnitsToEtherUnits_UsingTokenAddress(tokenAmount *big.Int, tokenAd
 	callOpts := &bind.CallOpts{}
 	err := instance_ERC20.Call(callOpts, &tokenDecimals, "decimals")
 	if err != nil {
-		log.Fatalf("Failed to retrieve value of variable: %v", err)
+		log.Error("Failed to retrieve value of variable: %v", err)
 	}
 
 	// convert tokenAmount that are in wei units to ether units using the decimals
