@@ -442,36 +442,54 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
 				}
 
-				// ONEINCH DEBUG START
-				// TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
-				//  on prod we want to remove this
-				// TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
-				// get all the oneinch pool data
-				allOneInchPools, err := GetAllPools_OneInchV2()
-				if err != nil {
-					fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
-				}
-				// iterate over allOneInchPools and get the balanceMetaData for each pool
-				for _, pool := range allOneInchPools {
-					balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
-					// check if one of the balances inside balanceMetaData is 0. if so then skip this pool
-					if balanceMetaData.Balance_token0_dst == 0 || balanceMetaData.Balance_token1_dst == 0  || balanceMetaData.Balance_token0_src == 0 || balanceMetaData.Balance_token1_src == 0{
-						// fmt.Println("nickdebug NewHeads: skipping pool because one of the balances is 0: ", pool)
-						continue
-					}
+				// // ONEINCH DEBUG START
+				// // TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
+				// //  on prod we want to remove this
+				// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
+				// // get all the oneinch pool data
+				// allOneInchPools, err := GetAllPools_OneInchV2()
+				// if err != nil {
+				// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
+				// }
+				// // iterate over allOneInchPools and get the balanceMetaData for each pool
+				// for _, pool := range allOneInchPools {
+				// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
+				// 	// check if one of the balances inside balanceMetaData is 0. if so then skip this pool
+				// 	if balanceMetaData.Balance_token0_dst == 0 || balanceMetaData.Balance_token1_dst == 0  || balanceMetaData.Balance_token0_src == 0 || balanceMetaData.Balance_token1_src == 0{
+				// 		// fmt.Println("nickdebug NewHeads: skipping pool because one of the balances is 0: ", pool)
+				// 		continue
+				// 	}
+				// 	if err != nil {
+				// 	} else {
+				// 		poolAddress := common.HexToAddress(pool)
+				// 		poolBalanceMetaData := PoolBalanceMetaData{
+				// 			Address: poolAddress,
+				// 			Topic: common.Hash{},
+				// 			BalanceMetaData: balanceMetaData,
+				// 			ExchangeName: "OneInchV2",
+				// 		}
+				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+				// 	}
+				// }
+				// // ONEINCH END
+
+				// iterate over Balancerv2TestPoolIds and call on each of its pools GetBalanceMetaData_BalancerV2
+				//  and add the result to newHeadsWithPoolBalanceMetaData
+				for _, pool := range Balancerv2TestPoolIds {
+					poolHash := common.HexToHash(pool)
+					balanceMetaData, poolAddress, err := GetBalanceMetaData_BalancerV2(poolHash)
 					if err != nil {
+						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for pool: ", pool)
 					} else {
-						poolAddress := common.HexToAddress(pool)
 						poolBalanceMetaData := PoolBalanceMetaData{
 							Address: poolAddress,
 							Topic: common.Hash{},
 							BalanceMetaData: balanceMetaData,
-							ExchangeName: "OneInchV2",
+							ExchangeName: "BalancerV2",
 						}
 						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
 					}
 				}
-				// ONEINCH END
 
 				wg.Wait()  // Wait for all workers to finish
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
