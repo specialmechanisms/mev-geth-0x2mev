@@ -450,8 +450,6 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				allOneInchPools, err := GetAllPools_OneInchV2()
 				if err != nil {
 					fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
-				} else {
-					fmt.Println("nickdebug NewHeads: allOneInchPools", allOneInchPools)
 				}
 				// iterate over allOneInchPools and get the balanceMetaData for each pool
 				for _, pool := range allOneInchPools {
