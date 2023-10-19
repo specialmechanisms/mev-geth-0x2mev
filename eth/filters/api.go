@@ -283,7 +283,7 @@ func init() {
 	}
 	allCurvePools, err = GetAllPools_Curve()
 	if err != nil {
-		fmt.Println("nickdebug NewHeads: error getting allCurvePools: ", err)
+		log.Error("nickdebug NewHeads: error getting allCurvePools: ", err)
 	} else {
 		fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
 	}
@@ -298,7 +298,6 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 		if err != nil {
 			// Handle error, perhaps log it
 			fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
-			continue
 		}
 
 		// Create PoolBalanceMetaData object
@@ -391,13 +390,16 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				}
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
+				// print the len of logs TODO nick remove this again
+				log.Info("nickdebug NewHeads: len(logs): ", len(logs))
 				if err != nil {
-					return
+					log.Error("nickdebug-error getting logs: ", err)
+					continue
 				}
 
 				// Create channels for logs and results
-				logChan := make(chan *types.Log, 100)          // Channel to send logs to logWorkers
-				results := make(chan PoolBalanceMetaData, 100) // Channel to collect results
+				logChan := make(chan *types.Log, len(logs))          // Channel to send logs to logWorkers
+				results := make(chan PoolBalanceMetaData, len(logs)) // Channel to collect results
 				// Start logWorkers
 				for w := 1; w <= numWorkers; w++ {
 					wg.Add(1) // Add to the WaitGroup counter
@@ -410,21 +412,24 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				for _, log := range logs {
 					logChan <- log
 				}
-				close(logChan)
+
 				// Collect results from logWorkers
 				newHeadsWithPoolBalanceMetaData := NewHeadsWithPoolBalanceMetaData{
 					Header:              h,
 					PoolBalanceMetaData: make(map[common.Address]PoolBalanceMetaData),
 				}
-
 				for i := 0; i < len(logs); i++ {
-					result := <-results
-					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+					select {
+					case result := <-results:
+						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+					case <-time.After(200 * time.Millisecond):
+						log.Error("Timeout waiting for result from logWorker")
+					}
 				}
 
 				// Create channels for Curve pools and results
-				curvePoolsChan := make(chan string, 100)            // Channel to send Curve pools to curveWorkers
-				curveResults := make(chan PoolBalanceMetaData, 100) // Channel to collect results from curveWorkers
+				curvePoolsChan := make(chan string, len(allCurvePools))            // Channel to send Curve pools to curveWorkers
+				curveResults := make(chan PoolBalanceMetaData, len(allCurvePools)) // Channel to collect results from curveWorkers
 				// Start Curve workers
 				for w := 1; w <= numWorkers; w++ {
 					wg.Add(1)
@@ -437,65 +442,19 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				for _, pool := range allCurvePools {
 					curvePoolsChan <- pool
 				}
-				close(curvePoolsChan)
-				// Collect results from Curve workers
 				for i := 0; i < len(allCurvePools); i++ {
-					result := <-curveResults
-					newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+					select {
+					case result := <-curveResults:
+						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+					case <-time.After(200 * time.Millisecond): // 200 millisecond timeout
+						log.Error("Timeout waiting for result from curveWorker")
+					}
 				}
+				// Wait for all workers to finish and then close the channels
+				wg.Wait()
+				close(logChan)
+				close(curvePoolsChan)
 
-				// // ONEINCH DEBUG START
-				// // TODO nick - we want to keep this for debugging on the ninja side later. because OneInchV2 events are super rare.
-				// //  on prod we want to remove this
-				// // TODO nick-smc check out the topcis and act on them. but for now i just want to debug and get the data every block
-				// // get all the oneinch pool data
-				// allOneInchPools, err := GetAllPools_OneInchV2()
-				// if err != nil {
-				// 	fmt.Println("nickdebug NewHeads: error getting allOneInchPools: ", err)
-				// }
-				// // iterate over allOneInchPools and get the balanceMetaData for each pool
-				// for _, pool := range allOneInchPools {
-				// 	balanceMetaData, err := GetBalanceMetaData_OneInchV2(pool)
-				// 	// check if one of the balances inside balanceMetaData is 0. if so then skip this pool
-				// 	if balanceMetaData.Balance_token0_dst == 0 || balanceMetaData.Balance_token1_dst == 0  || balanceMetaData.Balance_token0_src == 0 || balanceMetaData.Balance_token1_src == 0{
-				// 		// fmt.Println("nickdebug NewHeads: skipping pool because one of the balances is 0: ", pool)
-				// 		continue
-				// 	}
-				// 	if err != nil {
-				// 	} else {
-				// 		poolAddress := common.HexToAddress(pool)
-				// 		poolBalanceMetaData := PoolBalanceMetaData{
-				// 			Address: poolAddress,
-				// 			Topic: common.Hash{},
-				// 			BalanceMetaData: balanceMetaData,
-				// 			ExchangeName: "OneInchV2",
-				// 		}
-				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-				// 	}
-				// }
-				// // ONEINCH END
-
-				// // DEBUG BALANCERV2 START
-				// // iterate over Balancerv2TestPoolIds and call on each of its pools GetBalanceMetaData_BalancerV2
-				// //  and add the result to newHeadsWithPoolBalanceMetaData
-				// for _, pool := range Balancerv2TestPoolIds {
-				// 	poolHash := common.HexToHash(pool)
-				// 	balanceMetaData, poolAddress, err := GetBalanceMetaData_BalancerV2(poolHash)
-				// 	if err != nil {
-				// 		fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for pool: ", pool)
-				// 	} else {
-				// 		poolBalanceMetaData := PoolBalanceMetaData{
-				// 			Address:         poolAddress,
-				// 			Topic:           common.Hash{},
-				// 			BalanceMetaData: balanceMetaData,
-				// 			ExchangeName:    "BalancerV2",
-				// 		}
-				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-				// 	}
-				// }
-				// // DEBUG BALANCERV2 END
-
-				wg.Wait() // Wait for all workers to finish
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				// log.Info("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
