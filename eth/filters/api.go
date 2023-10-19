@@ -17,12 +17,12 @@
 package filters
 
 import (
-	"runtime"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime"
 	"sync"
 	"time"
 
@@ -31,8 +31,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var (
@@ -220,14 +220,14 @@ func (api *FilterAPI) NewBlockFilter() rpc.ID {
 
 type PoolBalanceMetaData struct {
 	ExchangeName string
-	Address common.Address
-	Topic common.Hash
+	Address      common.Address
+	Topic        common.Hash
 	// TODO nick-smc not sure about the type here yet
 	BalanceMetaData interface{}
 }
 
 type NewHeadsWithPoolBalanceMetaData struct {
-	Header *types.Header
+	Header              *types.Header
 	PoolBalanceMetaData map[common.Address]PoolBalanceMetaData
 }
 
@@ -237,17 +237,19 @@ var exchangeName_UniswapV3 string
 var exchangeName_BalancerV2 string
 var exchangeName_OneInchV2 string
 var mapOfExchangeNameToTopics = make(map[string][]common.Hash)
+
 // TODO nick give this a better name
 var flattenedValues []common.Hash
 var numWorkers int
 var allCurvePools []string
 var err error
+
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - r1h089s")
+	fmt.Println("nickdebug NewHeads: init() called - aasdw3q")
 	numWorkers = runtime.NumCPU() - 1
-    if numWorkers < 1 {
-        numWorkers = 1 // Ensure at least one worker
-    }
+	if numWorkers < 1 {
+		numWorkers = 1 // Ensure at least one worker
+	}
 	// create a map of ExchangeName -> Topics
 	//  those exchange names are copied from Ninja's codebase
 	exchangeName_UniswapV2 = "UniswapV2"
@@ -257,23 +259,23 @@ func init() {
 	exchangeName_OneInchV2 = "OneInchV2"
 
 	mapOfExchangeNameToTopics[exchangeName_UniswapV3] = []common.Hash{
-		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"),  // univ3 swap
-		common.HexToHash("0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde"),  // univ3 mint
-		common.HexToHash("0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c"),  // univ3 burn
+		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"), // univ3 swap
+		common.HexToHash("0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde"), // univ3 mint
+		common.HexToHash("0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c"), // univ3 burn
 	}
 	mapOfExchangeNameToTopics[exchangeName_UniswapV2] = []common.Hash{
-		common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"),	// uniswapV2 sync
+		common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"), // uniswapV2 sync
 	}
 	//  TODO nick-smc check if we need both topics here
 	mapOfExchangeNameToTopics[exchangeName_BalancerV2] = []common.Hash{
-		common.HexToHash("0x2170c741c41531aec20e7c107c24eecfdd15e69c9bb0a8dd37b1840b9e0b207b"),  // balancerV2 swap
-		common.HexToHash("0xe5ce249087ce04f05a957192435400fd97868dba0e6a4b4c049abf8af80dae78"),  // balancerV2 poolBalancesChanged
+		common.HexToHash("0x2170c741c41531aec20e7c107c24eecfdd15e69c9bb0a8dd37b1840b9e0b207b"), // balancerV2 swap
+		common.HexToHash("0xe5ce249087ce04f05a957192435400fd97868dba0e6a4b4c049abf8af80dae78"), // balancerV2 poolBalancesChanged
 	}
 	var exchangeName_OneInchV2 string = "OneInchV2"
 	mapOfExchangeNameToTopics[exchangeName_OneInchV2] = []common.Hash{
-		common.HexToHash("0x8bab6aed5a508937051a144e61d6e61336834a66aaee250a00613ae6f744c422"),  // OneInchV2 Deposited
-		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"),  // OneInchV2 Withdrawn
-		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"),  // OneInchV2 Swapped
+		common.HexToHash("0x8bab6aed5a508937051a144e61d6e61336834a66aaee250a00613ae6f744c422"), // OneInchV2 Deposited
+		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"), // OneInchV2 Withdrawn
+		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"), // OneInchV2 Swapped
 	}
 	// Flatten the map values
 	for _, values := range mapOfExchangeNameToTopics {
@@ -290,74 +292,74 @@ func init() {
 
 // curveWorker processes Curve pools to fetch balance metadata.
 func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData) {
-    for pool := range pools {
-        // Fetch balance metadata for the Curve pool
-        balanceMetaData, err := GetBalanceMetaData_Curve(pool)
-        if err != nil {
-            // Handle error, perhaps log it
-            fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
-            continue
-        }
+	for pool := range pools {
+		// Fetch balance metadata for the Curve pool
+		balanceMetaData, err := GetBalanceMetaData_Curve(pool)
+		if err != nil {
+			// Handle error, perhaps log it
+			fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
+			continue
+		}
 
-        // Create PoolBalanceMetaData object
-        poolAddress := common.HexToAddress(pool)
-        poolBalanceMetaData := PoolBalanceMetaData{
-            Address:        poolAddress,
-            Topic:          common.Hash{}, // No topic for Curve in this example
-            BalanceMetaData: balanceMetaData,
-            ExchangeName:    "Curve",
-        }
+		// Create PoolBalanceMetaData object
+		poolAddress := common.HexToAddress(pool)
+		poolBalanceMetaData := PoolBalanceMetaData{
+			Address:         poolAddress,
+			Topic:           common.Hash{}, // No topic for Curve in this example
+			BalanceMetaData: balanceMetaData,
+			ExchangeName:    "Curve",
+		}
 
-        // Send the result back
-        results <- poolBalanceMetaData
-    }
+		// Send the result back
+		results <- poolBalanceMetaData
+	}
 }
 
 // Assuming that GetLogs returns []*types.Log
-type Log = types.Log  // Reusing the type from GetLogs
+type Log = types.Log // Reusing the type from GetLogs
 func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData) {
-    for log := range logs {
-        address := log.Address
-        logTopic := log.Topics[0]
-        balanceMetaData := interface{}(nil)
-        var topicExchangeName string
-        for exchangeName, topics := range mapOfExchangeNameToTopics {
-            for _, topic := range topics {
-                if topic == logTopic {
-                    topicExchangeName = exchangeName
-                    break
-                }
-            }
-        }
+	for log := range logs {
+		address := log.Address
+		logTopic := log.Topics[0]
+		balanceMetaData := interface{}(nil)
+		var topicExchangeName string
+		for exchangeName, topics := range mapOfExchangeNameToTopics {
+			for _, topic := range topics {
+				if topic == logTopic {
+					topicExchangeName = exchangeName
+					break
+				}
+			}
+		}
 
-        var err error
-        switch topicExchangeName {
-        case exchangeName_UniswapV2:
-            balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
-        case exchangeName_UniswapV3:
-            balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
-        case exchangeName_BalancerV2:
-            poolId := log.Topics[1]
-            balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
-        case exchangeName_OneInchV2:
-            balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
-        default:
-            fmt.Println("nickdebug NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
-        }
-        if err != nil {
-            fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for exchange: ", topicExchangeName,
-                "and address: ", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
-            balanceMetaData = interface{}(nil)
-        }
+		var err error
+		switch topicExchangeName {
+		case exchangeName_UniswapV2:
+			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+		case exchangeName_UniswapV3:
+			balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+		case exchangeName_BalancerV2:
+			poolId := log.Topics[1]
+			balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+		case exchangeName_OneInchV2:
+			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+		default:
+			fmt.Println("NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
+		}
+		if err != nil {
+			fmt.Println("NewHeads: error getting balanceMetaData:", err, "for exchange: ", topicExchangeName,
+				"and address:", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
+			balanceMetaData = interface{}(nil)
+		}
 
-        poolBalanceMetaData := PoolBalanceMetaData{
-            Address: address,
-            Topic: logTopic,
-            BalanceMetaData: balanceMetaData,
-            ExchangeName: topicExchangeName,
-        }
-        results <- poolBalanceMetaData
-    }
+		poolBalanceMetaData := PoolBalanceMetaData{
+			Address:         address,
+			Topic:           logTopic,
+			BalanceMetaData: balanceMetaData,
+			ExchangeName:    topicExchangeName,
+		}
+		results <- poolBalanceMetaData
+	}
 }
 
 // NewHeads send a notification each time a new (header) block is appended to the chain.
@@ -385,7 +387,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					FromBlock: nil,
 					ToBlock:   nil,
 					Addresses: nil,
-					Topics: [][]common.Hash{flattenedValues},
+					Topics:    [][]common.Hash{flattenedValues},
 				}
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
@@ -394,14 +396,14 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				}
 
 				// Create channels for logs and results
-				logChan := make(chan *types.Log, 100)  // Channel to send logs to logWorkers
-				results := make(chan PoolBalanceMetaData, 100)  // Channel to collect results
+				logChan := make(chan *types.Log, 100)          // Channel to send logs to logWorkers
+				results := make(chan PoolBalanceMetaData, 100) // Channel to collect results
 				// Start logWorkers
 				for w := 1; w <= numWorkers; w++ {
-					wg.Add(1)  // Add to the WaitGroup counter
+					wg.Add(1) // Add to the WaitGroup counter
 					go func(id int) {
 						logWorker(id, logChan, results)
-						wg.Done()  // Decrement the counter when the goroutine completes
+						wg.Done() // Decrement the counter when the goroutine completes
 					}(w)
 				}
 				// Send logs to the logChan channel
@@ -411,7 +413,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				close(logChan)
 				// Collect results from logWorkers
 				newHeadsWithPoolBalanceMetaData := NewHeadsWithPoolBalanceMetaData{
-					Header: h,
+					Header:              h,
 					PoolBalanceMetaData: make(map[common.Address]PoolBalanceMetaData),
 				}
 
@@ -421,8 +423,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				}
 
 				// Create channels for Curve pools and results
-				curvePoolsChan := make(chan string, 100)  // Channel to send Curve pools to curveWorkers
-				curveResults := make(chan PoolBalanceMetaData, 100)  // Channel to collect results from curveWorkers
+				curvePoolsChan := make(chan string, 100)            // Channel to send Curve pools to curveWorkers
+				curveResults := make(chan PoolBalanceMetaData, 100) // Channel to collect results from curveWorkers
 				// Start Curve workers
 				for w := 1; w <= numWorkers; w++ {
 					wg.Add(1)
@@ -473,25 +475,27 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// }
 				// // ONEINCH END
 
-				// iterate over Balancerv2TestPoolIds and call on each of its pools GetBalanceMetaData_BalancerV2
-				//  and add the result to newHeadsWithPoolBalanceMetaData
-				for _, pool := range Balancerv2TestPoolIds {
-					poolHash := common.HexToHash(pool)
-					balanceMetaData, poolAddress, err := GetBalanceMetaData_BalancerV2(poolHash)
-					if err != nil {
-						fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for pool: ", pool)
-					} else {
-						poolBalanceMetaData := PoolBalanceMetaData{
-							Address: poolAddress,
-							Topic: common.Hash{},
-							BalanceMetaData: balanceMetaData,
-							ExchangeName: "BalancerV2",
-						}
-						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
-					}
-				}
+				// // DEBUG BALANCERV2 START
+				// // iterate over Balancerv2TestPoolIds and call on each of its pools GetBalanceMetaData_BalancerV2
+				// //  and add the result to newHeadsWithPoolBalanceMetaData
+				// for _, pool := range Balancerv2TestPoolIds {
+				// 	poolHash := common.HexToHash(pool)
+				// 	balanceMetaData, poolAddress, err := GetBalanceMetaData_BalancerV2(poolHash)
+				// 	if err != nil {
+				// 		fmt.Println("nickdebug NewHeads: error getting balanceMetaData: ", err, "for pool: ", pool)
+				// 	} else {
+				// 		poolBalanceMetaData := PoolBalanceMetaData{
+				// 			Address:         poolAddress,
+				// 			Topic:           common.Hash{},
+				// 			BalanceMetaData: balanceMetaData,
+				// 			ExchangeName:    "BalancerV2",
+				// 		}
+				// 		newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[poolAddress] = poolBalanceMetaData
+				// 	}
+				// }
+				// // DEBUG BALANCERV2 END
 
-				wg.Wait()  // Wait for all workers to finish
+				wg.Wait() // Wait for all workers to finish
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				// log.Info("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))

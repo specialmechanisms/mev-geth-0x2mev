@@ -7,11 +7,11 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var client *ethclient.Client
@@ -70,11 +70,11 @@ func init() {
 }
 
 type MetaData_OneInchV2 struct {
-	Balance_token0_src float64
-	Balance_token1_src float64
-	Balance_token0_dst float64
-	Balance_token1_dst float64
-	ExchangeFee float64
+	Balance_token0_src  float64
+	Balance_token1_src  float64
+	Balance_token0_dst  float64
+	Balance_token1_dst  float64
+	ExchangeFee         float64
 	ExchangeSlippageFee float64
 }
 
@@ -115,9 +115,9 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		if err != nil {
 			if isDivisionByZeroError(err) {
 				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
-				return metaData, nil  // Returning the current metaData without any further processing
+				return metaData, nil // Returning the current metaData without any further processing
 			}
-			return metaData, err  // For other errors
+			return metaData, err // For other errors
 		}
 
 		// Get balance for removal
@@ -126,9 +126,9 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		if err != nil {
 			if isDivisionByZeroError(err) {
 				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
-				return metaData, nil  // Returning the current metaData without any further processing
+				return metaData, nil // Returning the current metaData without any further processing
 			}
-			return metaData, err  // For other errors
+			return metaData, err // For other errors
 		}
 
 		// converting to ether units
@@ -188,8 +188,6 @@ func GetAllPools_OneInchV2() ([]string, error) {
 	return pools, nil
 }
 
-
-
 type MetaData_BalancerV2 struct {
 	Address        string
 	Tokens         []string
@@ -244,7 +242,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 		return metaData, poolAddress, err
 	}
 	fee_bigInt := poolFee[0].(*big.Int)
-	// divide fee_bigInt by 1e18. i just use WETH contract here because it has 18 decimals 
+	// divide fee_bigInt by 1e18. i just use WETH contract here because it has 18 decimals
 	metaData.Fee = ConvertWeiUnitsToEtherUnits_UsingTokenAddress(fee_bigInt, "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
 
 	// // 3. getPoolScalingFactors
@@ -267,7 +265,6 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 
 	return metaData, poolAddress, nil
 }
-
 
 //	BEGIN UNISWAPV3 MULTICALL
 //
@@ -324,7 +321,7 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	uniswapV3FactoryAddress := "0x1F98431c8aD98523631AE4a59f267346ea31F984"
 	poolFactoryAddress := response_factoryCall.Hex()
 	if poolFactoryAddress != uniswapV3FactoryAddress {
-		err = fmt.Errorf("poolAddress is not a uniswapV3 pool")
+		err = fmt.Errorf("pool has wrong factory address. we skip it on purpose!")
 		return metaData, err
 	}
 
@@ -370,8 +367,8 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 
 	return metaData, nil
 }
-//  END UNISWAPV3 MULTICALL
 
+//  END UNISWAPV3 MULTICALL
 
 // start curve
 // we will just use a cache and get the balances every block
@@ -433,7 +430,6 @@ func GetBalanceMetaData_Curve(poolAddress string) ([]*big.Int, error) {
 	return balances_wei, nil
 }
 
-
 func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
 	var data map[string]map[string]interface{}
 	err := json.Unmarshal([]byte(Cache_Curve), &data)
@@ -472,7 +468,7 @@ func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
 // create a function that returns all curve pools in a list
 // use the curve cache to get the pools
 // pools are called exchange there
-func GetAllPools_Curve () ([]string, error) {
+func GetAllPools_Curve() ([]string, error) {
 	var pools []string
 
 	var data map[string]map[string]interface{}
@@ -487,8 +483,8 @@ func GetAllPools_Curve () ([]string, error) {
 
 	return pools, nil
 }
-// END CURVE
 
+// END CURVE
 
 // TODO nick-smc i think i need to improve logging here
 func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
