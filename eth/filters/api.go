@@ -245,7 +245,7 @@ var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - bbbqadp")
+	fmt.Println("nickdebug NewHeads: init() called - 777adjp")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
@@ -290,9 +290,41 @@ func init() {
 
 }
 
+type MyWaitGroup struct {
+	wg      sync.WaitGroup
+	counter int
+	mu      sync.Mutex
+}
+
+func (mwg *MyWaitGroup) Add(delta int) {
+	mwg.mu.Lock()
+	defer mwg.mu.Unlock()
+	mwg.counter += delta
+	mwg.wg.Add(delta)
+}
+
+func (mwg *MyWaitGroup) Done() {
+	mwg.mu.Lock()
+	defer mwg.mu.Unlock()
+	mwg.counter--
+	mwg.wg.Done()
+}
+
+func (mwg *MyWaitGroup) Wait() {
+	mwg.wg.Wait()
+}
+
+func (mwg *MyWaitGroup) Count() int {
+	mwg.mu.Lock()
+	defer mwg.mu.Unlock()
+	return mwg.counter
+}
+
 // curveWorker processes Curve pools to fetch balance metadata.
-func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData) {
+// func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData) {
+func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData, curveWg *MyWaitGroup) {
 	for pool := range pools {
+		log.Info("curveWorker count (start)", "count", curveWg.Count(), "pool", pool)
 		// Fetch balance metadata for the Curve pool
 		balanceMetaData, err := GetBalanceMetaData_Curve(pool)
 		if err != nil {
@@ -311,20 +343,25 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 
 		// Send the result back
 		results <- poolBalanceMetaData
+		curveWg.Done()
+
+		log.Info("worker count (end)", "count", curveWg.Count(), "pool", pool)
 	}
 }
 
 // Assuming that GetLogs returns []*types.Log
 type Log = types.Log // Reusing the type from GetLogs
-func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData) {
-	for log := range logs {
-		address := log.Address
-		logTopic := log.Topics[0]
+func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, logWg *MyWaitGroup) {
+	for eventLog := range logs {
+		// log.Info("logWorker count (start)", "count", logWg.Count())
+
+		address := eventLog.Address
+		eventLogTopic := eventLog.Topics[0]
 		balanceMetaData := interface{}(nil)
 		var topicExchangeName string
 		for exchangeName, topics := range mapOfExchangeNameToTopics {
 			for _, topic := range topics {
-				if topic == logTopic {
+				if topic == eventLogTopic {
 					topicExchangeName = exchangeName
 					break
 				}
@@ -334,30 +371,45 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData) {
 		var err error
 		switch topicExchangeName {
 		case exchangeName_UniswapV2:
+			log.Info("found UniswapV2 log...", "pool", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+			log.Info("finished UniswapV2 log", "pool", address.Hex())
 		case exchangeName_UniswapV3:
+			log.Info("found UniswapV3 log...", "pool", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+			log.Info("finished UniswapV3 log", "pool", address.Hex())
 		case exchangeName_BalancerV2:
-			poolId := log.Topics[1]
+			poolId := eventLog.Topics[1]
+			log.Info("found BalancerV2 log...", "poolId", poolId.Hex())
 			balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+			log.Info("finished BalancerV2 log", "poolId", poolId.Hex())
 		case exchangeName_OneInchV2:
+			log.Info("found OneInchV2 log...", "address", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+			log.Info("finished OneInchV2 log", "address", address.Hex())
 		default:
-			fmt.Println("NewHeads: error: unknown exchangeName: ", topicExchangeName, "THIS SHOULD NEVER HAPPEN. FIX ASAP")
+			log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
 		}
 		if err != nil {
-			fmt.Println("NewHeads: error getting balanceMetaData:", err, "for exchange: ", topicExchangeName,
-				"and address:", address.Hex(), "state of balanceMetaData before setting it to nil:", balanceMetaData)
+			switch e := err.(type) {
+			case WrongFactoryAddressError:
+				log.Info("NewHeads: pool has wrong factory address", "topicExchangeName", topicExchangeName, "address:", e.Address)
+			default:
+				log.Error("NewHeads: error getting balanceMetaData: ", "topicExchangeName", topicExchangeName, "address:", address.Hex(), "error", err)
+			}
 			balanceMetaData = interface{}(nil)
 		}
 
 		poolBalanceMetaData := PoolBalanceMetaData{
 			Address:         address,
-			Topic:           logTopic,
+			Topic:           eventLogTopic,
 			BalanceMetaData: balanceMetaData,
 			ExchangeName:    topicExchangeName,
 		}
 		results <- poolBalanceMetaData
+		logWg.Done()
+
+		log.Info("worker count (end)", "count", logWg.Count())
 	}
 }
 
@@ -371,7 +423,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-		var wg sync.WaitGroup
+		// var logWg, curveWg sync.WaitGroup
+		var logWg, curveWg MyWaitGroup
 		headers := make(chan *types.Header)
 		headersSub := api.events.SubscribeNewHeads(headers)
 		for {
@@ -391,21 +444,21 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
 				// print the len of logs TODO nick remove this again
-				log.Info("nickdebug NewHeads: len(logs)", "count", len(logs))
+				log.Info("NewHeads: len(logs)", "count", len(logs))
 				if err != nil {
-					log.Error("nickdebug-error getting logs: ", err)
+					log.Error("NewHeads: error getting logs: ", err)
 					continue
 				}
 
 				// Create channels for logs and results
 				logChan := make(chan *types.Log, len(logs))          // Channel to send logs to logWorkers
 				results := make(chan PoolBalanceMetaData, len(logs)) // Channel to collect results
+				log.Info("NewHeads: logChan and results built")
 				// Start logWorkers
+				logWg.Add(len(logs))
 				for w := 1; w <= numWorkers; w++ {
-					wg.Add(1) // Add to the WaitGroup counter
 					go func(id int) {
-						logWorker(id, logChan, results)
-						wg.Done() // Decrement the counter when the goroutine completes
+						logWorker(id, logChan, results, &logWg)
 					}(w)
 				}
 				// Send logs to the logChan channel
@@ -430,12 +483,13 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// Create channels for Curve pools and results
 				curvePoolsChan := make(chan string, len(allCurvePools))            // Channel to send Curve pools to curveWorkers
 				curveResults := make(chan PoolBalanceMetaData, len(allCurvePools)) // Channel to collect results from curveWorkers
+				log.Info("NewHeads: curvePoolsChan and curveResults built")
+
 				// Start Curve workers
+				curveWg.Add(len(allCurvePools))
 				for w := 1; w <= numWorkers; w++ {
-					wg.Add(1)
 					go func(id int) {
-						curveWorker(id, curvePoolsChan, curveResults)
-						wg.Done()
+						curveWorker(id, curvePoolsChan, curveResults, &curveWg)
 					}(w)
 				}
 				// Populate the curvePoolsChan with the global list of all Curve pools
@@ -451,12 +505,17 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					}
 				}
 				// Wait for all workers to finish and then close the channels
-				wg.Wait()
+				log.Info("NewHeads: waiting for log workers to finish...", "logWg.Count()", logWg.Count())
+				logWg.Wait()
+				log.Info("NewHeads: waiting for curve workers to finish...", "curveWg.Count()", curveWg.Count())
+				curveWg.Wait()
+				log.Info("NewHeads: curve workers done")
+
 				close(logChan)
 				close(curvePoolsChan)
+				log.Info("NewHeads: all channels closed")
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
-				// log.Info("nickdebug NewHeads: time to process logs and notify: ", time.Since(start))
 				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
 
 			case <-rpcSub.Err():
