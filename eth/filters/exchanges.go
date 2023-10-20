@@ -93,7 +93,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 	callOpts := &bind.CallOpts{}
 	err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &rawTokensResponse, "getTokens")
 	if err != nil {
-		log.Info("Error fetching tokens from contract:", err)
+		log.Info("Error fetching tokens from contract:", "err", err)
 		return metaData, err
 	}
 
@@ -114,7 +114,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForAdditionResponse, "getBalanceForAddition", token)
 		if err != nil {
 			if isDivisionByZeroError(err) {
-				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				log.Info("Warning: Division by zero error detected for pool: Skipping this pool due to faulty contract.", "poolAddress", poolAddress)
 				return metaData, nil // Returning the current metaData without any further processing
 			}
 			return metaData, err // For other errors
@@ -125,7 +125,7 @@ func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error
 		err = instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &balanceForRemovalResponse, "getBalanceForRemoval", token)
 		if err != nil {
 			if isDivisionByZeroError(err) {
-				log.Info("Warning: Division by zero error detected for pool:", poolAddress, ". Skipping this pool due to faulty contract.")
+				log.Info("Warning: Division by zero error detected for pool:  Skipping this pool due to faulty contract.", "poolAddress", poolAddress)
 				return metaData, nil // Returning the current metaData without any further processing
 			}
 			return metaData, err // For other errors
@@ -220,7 +220,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	callOpts := &bind.CallOpts{}
 	err := instance_balancerv2_vault.Call(callOpts, &tokensAndBalances, "getPoolTokens", poolId)
 	if err != nil {
-		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 		return metaData, poolAddress, err
 	}
 	addresses := tokensAndBalances[0].([]common.Address)
@@ -238,7 +238,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	var poolFee []interface{}
 	err = instance_balancerv2_weightedPool.Call(callOpts, &poolFee, "getSwapFeePercentage")
 	if err != nil {
-		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 		return metaData, poolAddress, err
 	}
 	fee_bigInt := poolFee[0].(*big.Int)
@@ -256,7 +256,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 			metaData.ScalingFactors = nil // Explicitly set ScalingFactors to nil
 		} else {
 			// An unexpected error occurred.
-			log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", err)
+			log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 			return metaData, poolAddress, err
 		}
 	} else {

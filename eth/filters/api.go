@@ -391,7 +391,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
 				// print the len of logs TODO nick remove this again
-				log.Info("nickdebug NewHeads: len(logs): ", len(logs))
+				log.Info("nickdebug NewHeads: len(logs)", "count", len(logs))
 				if err != nil {
 					log.Error("nickdebug-error getting logs: ", err)
 					continue
