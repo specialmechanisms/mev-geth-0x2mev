@@ -2473,6 +2473,7 @@ type CallBundleArgs struct {
 	SimulationLogs         bool                  `json:"simulationLogs"`
 	CreateAccessList       bool                  `json:"createAccessList"`
 	StateOverrides         *StateOverride        `json:"stateOverrides"`
+	MixDigest              *common.Hash          `json:"mixDigest"`
 }
 
 // CallBundle will simulate a bundle of transactions at the top of a given block
@@ -2514,7 +2515,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
-	timestamp := parent.Time + 1
+	timestamp := parent.Time + 12
 	if args.Timestamp != nil {
 		timestamp = *args.Timestamp
 	}
@@ -2536,6 +2537,10 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
 		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
+	mixDigest := parent.MixDigest
+	if args.MixDigest != nil {
+		mixDigest = *args.MixDigest
+	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     blockNumber,
@@ -2544,6 +2549,7 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 		Difficulty: difficulty,
 		Coinbase:   coinbase,
 		BaseFee:    baseFee,
+		MixDigest:  mixDigest,
 	}
 
 	// Setup context so it may be cancelled the call has completed
