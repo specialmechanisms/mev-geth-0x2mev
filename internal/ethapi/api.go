@@ -2698,8 +2698,8 @@ type EstimateGasBundleArgs struct {
 	Coinbase               *string               `json:"coinbase"`
 	Timestamp              *uint64               `json:"timestamp"`
 	Timeout                *int64                `json:"timeout"`
-	//SimulationLogs         bool                  `json:"simulationLogs"`
-	CreateAccessList bool `json:"createAccessList"`
+	StateOverrides         *StateOverride        `json:"stateOverrides"`
+	CreateAccessList       bool                  `json:"createAccessList"`
 }
 
 // callbundle, but doesnt require signing
@@ -2721,6 +2721,10 @@ func (s *SearcherAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBun
 	if state == nil || err != nil {
 		return nil, err
 	}
+	if err := args.StateOverrides.Apply(state); err != nil {
+		return nil, err
+	}
+
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 	timestamp := parent.Time + 1
 	if args.Timestamp != nil {
