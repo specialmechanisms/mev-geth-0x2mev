@@ -617,6 +617,11 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
+			name: 'callBundle_unsignedTxs',
+			call: 'eth_callBundle_unsignedTxs',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'estimateGasBundle',
 			call: 'eth_estimateGasBundle',
 			params: 1,
