@@ -245,7 +245,7 @@ var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - 777adjp")
+	fmt.Println("nickdebug NewHeads: init() called - 111naco")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
@@ -324,7 +324,7 @@ func (mwg *MyWaitGroup) Count() int {
 // func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData) {
 func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData, curveWg *MyWaitGroup) {
 	for pool := range pools {
-		log.Info("curveWorker count (start)", "count", curveWg.Count(), "pool", pool)
+		// log.Info("curveWorker count (start)", "count", curveWg.Count(), "pool", pool)
 		// Fetch balance metadata for the Curve pool
 		balanceMetaData, err := GetBalanceMetaData_Curve(pool)
 		if err != nil {
@@ -345,7 +345,7 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 		results <- poolBalanceMetaData
 		curveWg.Done()
 
-		log.Info("worker count (end)", "count", curveWg.Count(), "pool", pool)
+		// log.Info("worker count (end)", "count", curveWg.Count(), "pool", pool)
 	}
 }
 
@@ -371,22 +371,22 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 		var err error
 		switch topicExchangeName {
 		case exchangeName_UniswapV2:
-			log.Info("found UniswapV2 log...", "pool", address.Hex())
+			// log.Info("found UniswapV2 log...", "pool", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
-			log.Info("finished UniswapV2 log", "pool", address.Hex())
+			// log.Info("finished UniswapV2 log", "pool", address.Hex())
 		case exchangeName_UniswapV3:
-			log.Info("found UniswapV3 log...", "pool", address.Hex())
+			// log.Info("found UniswapV3 log...", "pool", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
-			log.Info("finished UniswapV3 log", "pool", address.Hex())
+			// log.Info("finished UniswapV3 log", "pool", address.Hex())
 		case exchangeName_BalancerV2:
 			poolId := eventLog.Topics[1]
-			log.Info("found BalancerV2 log...", "poolId", poolId.Hex())
+			// log.Info("found BalancerV2 log...", "poolId", poolId.Hex())
 			balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
-			log.Info("finished BalancerV2 log", "poolId", poolId.Hex())
+			// log.Info("finished BalancerV2 log", "poolId", poolId.Hex())
 		case exchangeName_OneInchV2:
-			log.Info("found OneInchV2 log...", "address", address.Hex())
+			// log.Info("found OneInchV2 log...", "address", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
-			log.Info("finished OneInchV2 log", "address", address.Hex())
+			// log.Info("finished OneInchV2 log", "address", address.Hex())
 		default:
 			log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
 		}
@@ -409,7 +409,7 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 		results <- poolBalanceMetaData
 		logWg.Done()
 
-		log.Info("worker count (end)", "count", logWg.Count())
+		// log.Info("worker count (end)", "count", logWg.Count())
 	}
 }
 
@@ -431,7 +431,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 			select {
 			case h := <-headers:
 				start := time.Now()
-				log.Info("NewHeads: new block found", "block number", h.Number)
+				// log.Info("NewHeads: new block found", "block number", h.Number)
 				blockHash := h.Hash()
 
 				filterCriteria := FilterCriteria{
@@ -444,7 +444,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
 				// print the len of logs TODO nick remove this again
-				log.Info("NewHeads: len(logs)", "count", len(logs))
+				// log.Info("NewHeads: len(logs)", "count", len(logs))
 				if err != nil {
 					log.Error("NewHeads: error getting logs: ", err)
 					continue
@@ -453,7 +453,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// Create channels for logs and results
 				logChan := make(chan *types.Log, len(logs))          // Channel to send logs to logWorkers
 				results := make(chan PoolBalanceMetaData, len(logs)) // Channel to collect results
-				log.Info("NewHeads: logChan and results built")
+				// log.Info("NewHeads: logChan and results built")
 				// Start logWorkers
 				logWg.Add(len(logs))
 				for w := 1; w <= numWorkers; w++ {
@@ -483,7 +483,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// Create channels for Curve pools and results
 				curvePoolsChan := make(chan string, len(allCurvePools))            // Channel to send Curve pools to curveWorkers
 				curveResults := make(chan PoolBalanceMetaData, len(allCurvePools)) // Channel to collect results from curveWorkers
-				log.Info("NewHeads: curvePoolsChan and curveResults built")
+				// log.Info("NewHeads: curvePoolsChan and curveResults built")
 
 				// Start Curve workers
 				curveWg.Add(len(allCurvePools))
@@ -505,15 +505,15 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 					}
 				}
 				// Wait for all workers to finish and then close the channels
-				log.Info("NewHeads: waiting for log workers to finish...", "logWg.Count()", logWg.Count())
+				// log.Info("NewHeads: waiting for log workers to finish...", "logWg.Count()", logWg.Count())
 				logWg.Wait()
-				log.Info("NewHeads: waiting for curve workers to finish...", "curveWg.Count()", curveWg.Count())
+				// log.Info("NewHeads: waiting for curve workers to finish...", "curveWg.Count()", curveWg.Count())
 				curveWg.Wait()
-				log.Info("NewHeads: curve workers done")
+				// log.Info("NewHeads: curve workers done")
 
 				close(logChan)
 				close(curvePoolsChan)
-				log.Info("NewHeads: all channels closed")
+				// log.Info("NewHeads: all channels closed")
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
 				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
