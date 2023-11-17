@@ -2714,6 +2714,7 @@ type CallBundleSignedByOther struct {
 	SimulationLogs         bool                  `json:"simulationLogs"`
 	CreateAccessList       bool                  `json:"createAccessList"`
 	StateOverrides         *StateOverride        `json:"stateOverrides"`
+	MixDigest              *common.Hash          `json:"mixDigest"`
 }
 
 // CallBundle will simulate a bundle of transactions at the top of a given block
