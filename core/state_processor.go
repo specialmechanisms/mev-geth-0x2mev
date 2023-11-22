@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
-	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -138,7 +137,7 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 
 	if tx.Type() == types.BlobTxType {
 		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
-		receipt.BlobGasPrice = eip4844.CalcBlobFee(*evm.Context.ExcessBlobGas)
+		receipt.BlobGasPrice = evm.Context.BlobBaseFee
 	}
 
 	// If the transaction created a contract, store the creation address in the receipt.
@@ -164,6 +163,26 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	if err != nil {
 		return nil, nil, err
 	}
+	
+	// Create a new context to be used in the EVM environment
+	blockContext := NewEVMBlockContext(header, bc, author)
+	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
+	return applyTransaction(msg, config, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv)
+}
+
+// This is a modified version of ApplyTransaction that allows the sender to be
+// different from the signer. This is used for the "signed by other" feature.
+func ApplyTransactionSignedByOther(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, originalSender common.Address) (*types.Receipt, *ExecutionResult, error) {
+	msg, err := TransactionToMessage(tx, types.MakeSigner(config, header.Number,  header.Time), header.BaseFee)
+	if err != nil {
+		return nil, nil, err
+	}
+	
+	// Change the sender to the original sender and set the nonce accordingly
+	msg.From = originalSender
+	nonce := statedb.GetNonce(originalSender)
+	msg.Nonce = nonce
+
 	// Create a new context to be used in the EVM environment
 	blockContext := NewEVMBlockContext(header, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{BlobHashes: tx.BlobHashes()}, statedb, config, cfg)
