@@ -22,6 +22,7 @@ var parsedABI_uniswapv3_pool abi.ABI
 var parsedABI_balancerv2_vault abi.ABI
 var parsedABI_balancerv2_pool abi.ABI
 var parsedABI_OneInchV2_Mooniswap_Pool abi.ABI
+var activeOneInchV2DecayPeriods map[common.Address]OneInchV2DecayPeriod
 var blacklistArray_OneinchV2 []string
 var blacklist_OneinchV2 map[string]bool
 var Balancerv2TestPoolIds []string
@@ -62,6 +63,7 @@ func init() {
 		log.Error("Failed to parse contract ABI: %v", err)
 	}
 
+	activeOneInchV2DecayPeriods = make(map[common.Address]OneInchV2DecayPeriod)
 	// those pools are bugged, never have any TXs on it and cause div by zero errors which slows down the node and sometimes even crashes it
 	blacklistArray_OneinchV2 = []string{"0x22c6289db7e8eab6aa12c35a044410327c4d9f93", "0x642eef38c4a9bad89c264e8b567ab81b42373c09", "0xb30116c66483fd87de3cbe14e7e0a764b632e5ca", "0x3d1a7a585c5e6ce429e8bd74b2f44db3b643462d", "0x1a5dab604981cb24980b6b6646718f832ec7af3c", "0xf3cd77de1b99610441978bf542cae7d58673fb7d", "0xfde1ba8b3ef2d8a9d2e1665deb62a1a49fd4e4d1", "0xcad46eff448e22802359488b5873f5886242e438", "0xe64f91911883ea26c146fb094fab5dcec14a0925", "0xa7363cf21b379865eb04475e70901bc2fe0dbb5d", "0x5c2e1346c91313d55c6573276ba797e0d56f1b8e", "0x12e7d705025d5e5bd465d4153c1425cad5cefeb3", "0xd138b94dd76a63ed6683764760d030ee1f6017d7", "0x9cc0bf948954f90877624c09d2c5a28b0d40b2f7", "0x2c8b7fb5814c878805dc09544594977af1c0c3c2", "0x71c6e39a7945df102e9ef5d9f3534d3ca923d8f4", "0x339f882e761cb568127a674b61a4a835e2b97975", "0x713749988b4c6ed072fdc8c9063d0d10432f4743", "0xce7ae35e05ba226dcdd2ed23c974b7f90744c6d9", "0x0f0e6e11dccb4d08cd3e0e6501a9e5bd4fba94b8", "0xca6993d4a4e1ae19f98e64ee4069c43d759461ee", "0x611fcab149b34b857e8526cd1500c92f6ecae313", "0x5b445e5c775c93cddde2f307032dcb6efac6a594", "0x90f2fad22c3796ce5ac3a466e9a6c707bf72b512", "0xefa579e56923b876880c376280563b4d0232d2d1", "0x062d37257479435da4ba3c0a8c2e376da027e29b", "0x335565d37ac8554fe16dcb817514150d3059da1c", "0xb4cc12a091ff1778d19fd13461265dacb3f1599c", "0x45187b597f55a9bd9ef218bd833a4ac102d8ed34", "0x70c34a9b4d7a5c16f902a5274f9fb7ac18908daf", "0x98bdf79efc11a58bfe349ade4df8073cc452e283", "0x653a191f7b41319c4931f40c5b2e8b5c7bacc5b1", "0x4f339ff82ecf7efb987534df98602d0fafa4680f", "0xaf9f860bf2e67bd5227c04a8978d851740e94af3", "0x52959f4fd37c2e1f1ef45d48b9135fb523e0f831", "0xae1cddedd0320a6cadb1075d8094df2beb056bac", "0xc2946d6c8698cb0276b711757380d3ba43663576", "0x24df89e467b134a860c72f291297edd4e6f82c73", "0x084f67f06518572adf435d12abdfb455acaa90a1", "0x4020819c2c96962460fd1ce0c1eba8a52747d4a5", "0x6023cbb069ccbda746340e65e2b3094558e50d7d", "0xb2a26335f7215748f28001cf3c64dc5fadc9de43", "0x1a33e47f47318e5879998493e9de89966370fcb7", "0x18677c37f4142127598c872054e4dbb8cfbee202", "0x30e5d83276bc7ae54cb448df93e80212944d9ee9", "0x89bff5e0aec73979caac7ee2aa8c9a9773e3c9e0", "0x386b3ac9afab9e0f8a39d4cdd1585bcbda165f85", "0xfce443acd6aad3ea497dff392249bc75093d160f", "0x51a6315bf905b973409888dfd69a9958ae1982bf", "0x5267065e406cca5647551fd0239841bd280c1332", "0x94eb287e8b23908307b046dde327dc9feb8595fe", "0x57b7e58e427831a1a0fc0ceef11b21459c35ba3c", "0x304dceb0fabbafc08c02adcf492ddfc26a48f5ee", "0x2bc4b2bd0eab774a12e2a42df214cee1676bb6ff", "0xd688123dfffcb9c215def2ce6aa503f6e55717a7", "0xfebbe4cccbad7c6d6cff6272b1f3ad36bb1cc798", "0xa097d9d3a67b4b5cefe75fb97b6e817fb78b12d7", "0x9ac1359e4e70cfe77bb33fa659f809afefd7c64f", "0x23ecf94669570778afe5b14c8c320f285da42550", "0xe07c3809ac9fedebe249c8fdfc7615dc4c4cec60", "0x358a9447ee1d23b3995b70442d02dec221a7a7b9", "0x036d35985c250f394ae590807a27018aae225c2a"}
 	// Create a map for constant-time lookups
@@ -76,6 +78,65 @@ type WrongFactoryAddressError struct {
 func (e WrongFactoryAddressError) Error() string {
     return fmt.Sprintf("pool has wrong factory address: %s", e.Address)
 }
+
+type OneInchV2DecayPeriod struct {
+    PoolAddress common.Address
+    StartBlock  big.Int
+    EndBlock    big.Int
+}
+
+func AddPoolToActiveOneInchV2DecayPeriods(poolAddress common.Address, startBlock *big.Int) {
+	log.Info("Adding pool to active decay periods", "poolAddress", poolAddress.Hex(), "startBlock", startBlock)
+    instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(poolAddress, parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
+
+    // Fetch the decayPeriod from the pool
+    var decayPeriodResponse []interface{}
+    callOpts := &bind.CallOpts{}
+    err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &decayPeriodResponse, "decayPeriod")
+    if err != nil {
+        log.Info("Error fetching decayPeriod from contract:", "err", err)
+        return // Consider handling the error appropriately
+    }
+	log.Info("decayPeriodResponse", "decayPeriodResponse", decayPeriodResponse)
+    // Convert the decayPeriod to a big.Int
+    decayPeriod := decayPeriodResponse[0].(*big.Int)
+    log.Info("decayPeriod", "decayPeriod", decayPeriod)
+
+    // The decay period is in seconds, so we need to convert it to blocks and add a buffer of 3 blocks
+    decayPeriodInBlocks := new(big.Int).Div(decayPeriod, big.NewInt(13))
+    decayPeriodInBlocks.Add(decayPeriodInBlocks, big.NewInt(3))
+    log.Info("decayPeriodInBlocks", "decayPeriodInBlocks", decayPeriodInBlocks)
+
+    // Calculate the endBlock
+    endBlock := new(big.Int).Add(startBlock, decayPeriodInBlocks)
+    log.Info("endBlock", "endBlock", endBlock)
+
+    // Add or overwrite the pool in the list of active decay periods
+    activeOneInchV2DecayPeriods[poolAddress] = OneInchV2DecayPeriod{
+        PoolAddress: poolAddress,
+        StartBlock:  *startBlock,
+        EndBlock:    *endBlock,
+    }
+	log.Info("activeOneInchV2DecayPeriods", "activeOneInchV2DecayPeriods", activeOneInchV2DecayPeriods)
+}
+
+
+func GetAllDecayingOneinchPoolsData(currentBlock *big.Int) []OneInchV2DecayPeriod {
+    validPools := make([]OneInchV2DecayPeriod, 0)
+
+    for address, period := range activeOneInchV2DecayPeriods {
+        if period.EndBlock.Cmp(currentBlock) > 0 {
+            // Pool is still within the decay period
+            validPools = append(validPools, period)
+        } else {
+            // Decay period has ended, remove it from the map
+            delete(activeOneInchV2DecayPeriods, address)
+        }
+    }
+
+    return validPools
+}
+
 
 type MetaData_OneInchV2 struct {
 	Balance_token0_src  float64
