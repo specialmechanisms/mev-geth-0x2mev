@@ -245,7 +245,7 @@ var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - 222taco")
+	fmt.Println("nickdebug NewHeads: init() called - 111blue")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
@@ -351,7 +351,7 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 
 // Assuming that GetLogs returns []*types.Log
 type Log = types.Log // Reusing the type from GetLogs
-func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, logWg *MyWaitGroup) {
+func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, logWg *MyWaitGroup, currentBlockNumber *big.Int) {
 	for eventLog := range logs {
 		// log.Info("logWorker count (start)", "count", logWg.Count())
 
@@ -386,6 +386,7 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 		case exchangeName_OneInchV2:
 			// log.Info("found OneInchV2 log...", "address", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+			AddPoolToActiveOneInchV2DecayPeriods(address, currentBlockNumber)
 			// log.Info("finished OneInchV2 log", "address", address.Hex())
 		default:
 			log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
@@ -413,6 +414,31 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 	}
 }
 
+func oneInchWorker(id int, pools <-chan common.Address, results chan<- PoolBalanceMetaData, oneInchWg *MyWaitGroup) {
+    for poolAddress := range pools {
+		// log.Info("oneInchWorker count (start)", "count", oneInchWg.Count())
+		balanceMetaData := interface{}(nil)
+        // Process the pool
+        // Example: Fetching pool data (placeholder logic)
+        balanceMetaData, err = GetBalanceMetaData_OneInchV2(poolAddress.Hex())
+        if err != nil {
+            log.Error("NewHeads: error getting balanceMetaData on OneinchV2: ", "address:", poolAddress.Hex(), "error", err)
+        }
+
+        // Send the result back
+		poolBalanceMetaData := PoolBalanceMetaData{
+			Address:         poolAddress,
+			Topic:           common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"),
+			BalanceMetaData: balanceMetaData,
+			ExchangeName:    exchangeName_OneInchV2,
+		}
+		results <- poolBalanceMetaData
+        oneInchWg.Done()
+		// log.Info("oneInchWorker count (end)", "count", oneInchWg.Count())
+    }
+}
+
+
 // NewHeads send a notification each time a new (header) block is appended to the chain.
 func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
@@ -430,7 +456,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		for {
 			select {
 			case h := <-headers:
-				start := time.Now()
+				// start := time.Now()
 				// log.Info("NewHeads: new block found", "block number", h.Number)
 				blockHash := h.Hash()
 
@@ -458,7 +484,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				logWg.Add(len(logs))
 				for w := 1; w <= numWorkers; w++ {
 					go func(id int) {
-						logWorker(id, logChan, results, &logWg)
+						logWorker(id, logChan, results, &logWg, h.Number)
 					}(w)
 				}
 				// Send logs to the logChan channel
@@ -504,19 +530,51 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 						log.Error("Timeout waiting for result from curveWorker")
 					}
 				}
+
+				// Create channels for OneInch decaying pools and results
+				oneInchPools := GetAllDecayingOneinchPoolsData(h.Number) // Get pools that need to be queried
+				// log.Info("NewHeads: oneInchPools", "count", len(oneInchPools))
+				oneInchPoolsChan := make(chan common.Address, len(oneInchPools))   // Channel to send OneInch pools to workers
+				oneInchResults := make(chan PoolBalanceMetaData, len(oneInchPools))   // Channel to collect results from OneInch workers)
+
+				// Start OneInch workers
+				var oneInchWg MyWaitGroup
+				oneInchWg.Add(len(oneInchPools))
+				for w := 1; w <= numWorkers; w++ { // numOneInchWorkers is the number of worker goroutines you want to start
+					go oneInchWorker(w, oneInchPoolsChan, oneInchResults, &oneInchWg)
+				}
+
+				// Populate the oneInchPoolsChan with pools
+				for _, pool := range oneInchPools {
+					oneInchPoolsChan <- pool.PoolAddress
+				}
+
+				// Collect results from OneInch workers
+				for i := 0; i < len(oneInchPools); i++ {
+					select {
+					case result := <-oneInchResults:
+						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+					case <-time.After(200 * time.Millisecond): // Timeout waiting for worker
+						log.Error("Timeout waiting for result from oneInchWorker")
+					}
+				}
+
 				// Wait for all workers to finish and then close the channels
 				// log.Info("NewHeads: waiting for log workers to finish...", "logWg.Count()", logWg.Count())
 				logWg.Wait()
 				// log.Info("NewHeads: waiting for curve workers to finish...", "curveWg.Count()", curveWg.Count())
 				curveWg.Wait()
-				// log.Info("NewHeads: curve workers done")
+				// log.Info("NewHeads: waiting for oneInch workers to finish...", "oneInchWg.Count()", oneInchWg.Count())
+				oneInchWg.Wait()
 
 				close(logChan)
 				close(curvePoolsChan)
+				// Wait for OneInch workers to finish and then close the channels
+				close(oneInchPoolsChan)
 				// log.Info("NewHeads: all channels closed")
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
-				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
+				// log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
 
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
