@@ -86,7 +86,7 @@ type OneInchV2DecayPeriod struct {
 }
 
 func AddPoolToActiveOneInchV2DecayPeriods(poolAddress common.Address, startBlock *big.Int) {
-	log.Info("Adding pool to active decay periods", "poolAddress", poolAddress.Hex(), "startBlock", startBlock)
+	// log.Info("Adding pool to active decay periods", "poolAddress", poolAddress.Hex(), "startBlock", startBlock)
     instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(poolAddress, parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
 
     // Fetch the decayPeriod from the pool
@@ -97,19 +97,19 @@ func AddPoolToActiveOneInchV2DecayPeriods(poolAddress common.Address, startBlock
         log.Info("Error fetching decayPeriod from contract:", "err", err)
         return // Consider handling the error appropriately
     }
-	log.Info("decayPeriodResponse", "decayPeriodResponse", decayPeriodResponse)
+	// log.Info("decayPeriodResponse", "decayPeriodResponse", decayPeriodResponse)
     // Convert the decayPeriod to a big.Int
     decayPeriod := decayPeriodResponse[0].(*big.Int)
-    log.Info("decayPeriod", "decayPeriod", decayPeriod)
+    // log.Info("decayPeriod", "decayPeriod", decayPeriod)
 
     // The decay period is in seconds, so we need to convert it to blocks and add a buffer of 3 blocks
     decayPeriodInBlocks := new(big.Int).Div(decayPeriod, big.NewInt(13))
     decayPeriodInBlocks.Add(decayPeriodInBlocks, big.NewInt(3))
-    log.Info("decayPeriodInBlocks", "decayPeriodInBlocks", decayPeriodInBlocks)
+    // log.Info("decayPeriodInBlocks", "decayPeriodInBlocks", decayPeriodInBlocks)
 
     // Calculate the endBlock
     endBlock := new(big.Int).Add(startBlock, decayPeriodInBlocks)
-    log.Info("endBlock", "endBlock", endBlock)
+    // log.Info("endBlock", "endBlock", endBlock)
 
     // Add or overwrite the pool in the list of active decay periods
     activeOneInchV2DecayPeriods[poolAddress] = OneInchV2DecayPeriod{
@@ -117,7 +117,7 @@ func AddPoolToActiveOneInchV2DecayPeriods(poolAddress common.Address, startBlock
         StartBlock:  *startBlock,
         EndBlock:    *endBlock,
     }
-	log.Info("activeOneInchV2DecayPeriods", "activeOneInchV2DecayPeriods", activeOneInchV2DecayPeriods)
+	// log.Info("activeOneInchV2DecayPeriods", "activeOneInchV2DecayPeriods", activeOneInchV2DecayPeriods)
 }
 
 
