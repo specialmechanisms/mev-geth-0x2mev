@@ -2711,9 +2711,9 @@ func (s *SearcherAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[
 // This is a modified version of the function CallBundle
 // It is modified to allow for transactions to be signed by different addresses than the one that is sending it.
 func (s *SearcherAPI) CallBundleSignedByOther(ctx context.Context, args CallBundleSignedByOther) (map[string]interface{}, error) {
-	if len(args.Txs) == 0 {
-		return nil, errors.New("bundle missing txs")
-	}
+	// if len(args.Txs) == 0 {
+	// 	return nil, errors.New("bundle missing txs")
+	// }
 	if args.BlockNumber == 0 {
 		return nil, errors.New("bundle missing blockNumber")
 	}
