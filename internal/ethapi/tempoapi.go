@@ -17,23 +17,23 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
-func NewSmgAPI(apiBackend Backend) *SmgAPI {
-    return &SmgAPI{
+func NewTempoAPI(apiBackend Backend) *TempoAPI {
+    return &TempoAPI{
         b: apiBackend,
     }
 }
 
-type SmgAPI struct {
+type TempoAPI struct {
     b Backend
 }
 
-// func (s *SmgAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
-//     smgAPI := NewSmgAPI(s.b)
-//     result, err := smgAPI.DoCall(ctx, s.b, args, blockNrOrHash, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+// func (s *TempoAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+//     tempoAPI := NewTempoAPI(s.b)
+//     result, err := tempoAPI.DoCall(ctx, s.b, args, blockNrOrHash, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 //     // ...
 // }
 
-func (s *SmgAPI) DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func (s *TempoAPI) DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
@@ -106,7 +106,7 @@ func (s *SmgAPI) DoCall(ctx context.Context, b Backend, args TransactionArgs, bl
  //
  // Note, this function doesn't make and changes in the state/blockchain and is
  // useful to execute and retrieve values.
- func (s *SmgAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+ func (s *TempoAPI) Eth_call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
 	result, err := DoCall(ctx, s.b, args, blockNrOrHash, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 	// log an error message that says test
 	if err != nil {
@@ -119,7 +119,7 @@ func (s *SmgAPI) DoCall(ctx context.Context, b Backend, args TransactionArgs, bl
 	return result.Return(), result.Err
 }
 
-func (s *SmgAPI) DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
+func (s *TempoAPI) DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -241,7 +241,7 @@ func (s *SmgAPI) DoEstimateGas(ctx context.Context, b Backend, args TransactionA
 
 // EstimateGas returns an estimate of the amount of gas needed to execute the
 // given transaction against the current pending block.
-func (s *SmgAPI) EstimateGas(ctx context.Context, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride) (hexutil.Uint64, error) {
+func (s *TempoAPI) Eth_estimateGas(ctx context.Context, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride) (hexutil.Uint64, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash

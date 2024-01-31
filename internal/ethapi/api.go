@@ -3222,10 +3222,3 @@ func (s *SearcherAPI) GetCompactBlocks(ctx context.Context, blockNrOrHashes []rp
 	}
 	return resultArray, nil
 }
-
-// // NewSmgAPI creates a new instance of SmgAPI
-// func NewSmgAPI() *SmgAPI {
-//     return &SmgAPI{
-//         // initialize fields as necessary
-//     }
-// }
