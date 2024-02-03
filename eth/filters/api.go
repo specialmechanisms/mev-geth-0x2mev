@@ -456,7 +456,11 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		for {
 			select {
 			case h := <-headers:
-				// start := time.Now()
+				start := time.Now()
+				// measure the time since h.Time
+				hTime := time.Unix(int64(h.Time), 0)
+				log.Info("NewHeads: block discovered", "block number", h.Number, "duration", time.Since(hTime))
+
 				// log.Info("NewHeads: new block found", "block number", h.Number)
 				blockHash := h.Hash()
 
@@ -574,7 +578,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// log.Info("NewHeads: all channels closed")
 
 				notifier.Notify(rpcSub.ID, newHeadsWithPoolBalanceMetaData)
-				// log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
+				// get the timestamp of the block
+				log.Info("NewHeads: time to process logs and notify", "duration", time.Since(start))
 
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
