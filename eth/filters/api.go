@@ -245,7 +245,7 @@ var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - 222green")
+	fmt.Println("nickdebug NewHeads: init() called - 333red")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
@@ -415,17 +415,17 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 }
 
 func oneInchWorker(id int, pools <-chan common.Address, results chan<- PoolBalanceMetaData, oneInchWg *MyWaitGroup) {
-    for poolAddress := range pools {
+	for poolAddress := range pools {
 		// log.Info("oneInchWorker count (start)", "count", oneInchWg.Count())
 		balanceMetaData := interface{}(nil)
-        // Process the pool
-        // Example: Fetching pool data (placeholder logic)
-        balanceMetaData, err = GetBalanceMetaData_OneInchV2(poolAddress.Hex())
-        if err != nil {
-            log.Error("NewHeads: error getting balanceMetaData on OneinchV2: ", "address:", poolAddress.Hex(), "error", err)
-        }
+		// Process the pool
+		// Example: Fetching pool data (placeholder logic)
+		balanceMetaData, err = GetBalanceMetaData_OneInchV2(poolAddress.Hex())
+		if err != nil {
+			log.Error("NewHeads: error getting balanceMetaData on OneinchV2: ", "address:", poolAddress.Hex(), "error", err)
+		}
 
-        // Send the result back
+		// Send the result back
 		poolBalanceMetaData := PoolBalanceMetaData{
 			Address:         poolAddress,
 			Topic:           common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"),
@@ -433,11 +433,10 @@ func oneInchWorker(id int, pools <-chan common.Address, results chan<- PoolBalan
 			ExchangeName:    exchangeName_OneInchV2,
 		}
 		results <- poolBalanceMetaData
-        oneInchWg.Done()
+		oneInchWg.Done()
 		// log.Info("oneInchWorker count (end)", "count", oneInchWg.Count())
-    }
+	}
 }
-
 
 // NewHeads send a notification each time a new (header) block is appended to the chain.
 func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
@@ -538,8 +537,8 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				// Create channels for OneInch decaying pools and results
 				oneInchPools := GetAllDecayingOneinchPoolsData(h.Number) // Get pools that need to be queried
 				// log.Info("NewHeads: oneInchPools", "count", len(oneInchPools))
-				oneInchPoolsChan := make(chan common.Address, len(oneInchPools))   // Channel to send OneInch pools to workers
-				oneInchResults := make(chan PoolBalanceMetaData, len(oneInchPools))   // Channel to collect results from OneInch workers)
+				oneInchPoolsChan := make(chan common.Address, len(oneInchPools))    // Channel to send OneInch pools to workers
+				oneInchResults := make(chan PoolBalanceMetaData, len(oneInchPools)) // Channel to collect results from OneInch workers)
 
 				// Start OneInch workers
 				var oneInchWg MyWaitGroup
