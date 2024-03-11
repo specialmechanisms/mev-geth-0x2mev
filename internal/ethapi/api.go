@@ -1674,7 +1674,7 @@ func AccessListOnState(ctx context.Context, b Backend, header *types.Header, db 
 	nogas := args.Gas == nil
 
 	// Ensure any missing fields are filled, extract the recipient and input data
-	if err := args.setDefaults(ctx, b); err != nil {
+	if err := args.setDefaults(ctx, b, true); err != nil {
 		return nil, 0, nil, err
 	}
 	var to common.Address
@@ -1703,7 +1703,7 @@ func AccessListOnState(ctx context.Context, b Backend, header *types.Header, db 
 		// and it's convered by the sender only anyway.
 		if nogas {
 			args.Gas = nil
-			if err := args.setDefaults(ctx, b); err != nil {
+			if err := args.setDefaults(ctx, b, true); err != nil {
 				return nil, 0, nil, err // shouldn't happen, just in case
 			}
 		}
