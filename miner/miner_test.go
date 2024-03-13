@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 type mockBackend struct {
@@ -99,6 +100,7 @@ func (bc *testBlockChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent)
 }
 
 func TestMiner(t *testing.T) {
+	t.Parallel()
 	miner, mux, cleanup := createMiner(t)
 	defer cleanup(false)
 
@@ -128,6 +130,7 @@ func TestMiner(t *testing.T) {
 // An initial FailedEvent should allow mining to stop on a subsequent
 // downloader StartEvent.
 func TestMinerDownloaderFirstFails(t *testing.T) {
+	t.Parallel()
 	miner, mux, cleanup := createMiner(t)
 	defer cleanup(false)
 
@@ -161,6 +164,7 @@ func TestMinerDownloaderFirstFails(t *testing.T) {
 }
 
 func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
+	t.Parallel()
 	miner, mux, cleanup := createMiner(t)
 	defer cleanup(false)
 
@@ -185,6 +189,7 @@ func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
 }
 
 func TestStartWhileDownload(t *testing.T) {
+	t.Parallel()
 	miner, mux, cleanup := createMiner(t)
 	defer cleanup(false)
 	waitForMiningState(t, miner, false)
@@ -199,6 +204,7 @@ func TestStartWhileDownload(t *testing.T) {
 }
 
 func TestStartStopMiner(t *testing.T) {
+	t.Parallel()
 	miner, _, cleanup := createMiner(t)
 	defer cleanup(false)
 	waitForMiningState(t, miner, false)
@@ -209,6 +215,7 @@ func TestStartStopMiner(t *testing.T) {
 }
 
 func TestCloseMiner(t *testing.T) {
+	t.Parallel()
 	miner, _, cleanup := createMiner(t)
 	defer cleanup(true)
 	waitForMiningState(t, miner, false)
@@ -222,6 +229,7 @@ func TestCloseMiner(t *testing.T) {
 // TestMinerSetEtherbase checks that etherbase becomes set even if mining isn't
 // possible at the moment
 func TestMinerSetEtherbase(t *testing.T) {
+	t.Parallel()
 	miner, mux, cleanup := createMiner(t)
 	defer cleanup(false)
 	miner.Start()
@@ -272,7 +280,7 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 		GasLimit:   gasLimit,
 		BaseFee:    big.NewInt(params.InitialBaseFee),
 		Difficulty: big.NewInt(1),
-		Alloc: map[common.Address]core.GenesisAccount{
+		Alloc: map[common.Address]types.Account{
 			common.BytesToAddress([]byte{1}): {Balance: big.NewInt(1)}, // ECRecover
 			common.BytesToAddress([]byte{2}): {Balance: big.NewInt(1)}, // SHA256
 			common.BytesToAddress([]byte{3}): {Balance: big.NewInt(1)}, // RIPEMD
@@ -293,7 +301,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	}
 	// Create chainConfig
 	chainDB := rawdb.NewMemoryDatabase()
-	triedb := trie.NewDatabase(chainDB, nil)
+	triedb := triedb.NewDatabase(chainDB, nil)
 	genesis := minerTestGenesisBlock(15, 11_500_000, common.HexToAddress("12345"))
 	chainConfig, _, err := core.SetupGenesisBlock(chainDB, triedb, genesis)
 	if err != nil {
@@ -310,7 +318,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	blockchain := &testBlockChain{bc.Genesis().Root(), chainConfig, statedb, 10000000, new(event.Feed)}
 
 	pool := legacypool.New(testTxPoolConfig, blockchain)
-	txpool, _ := txpool.New(new(big.Int).SetUint64(testTxPoolConfig.PriceLimit), blockchain, []txpool.SubPool{pool})
+	txpool, _ := txpool.New(testTxPoolConfig.PriceLimit, blockchain, []txpool.SubPool{pool})
 
 	backend := NewMockBackend(bc, txpool)
 	// Create event Mux
