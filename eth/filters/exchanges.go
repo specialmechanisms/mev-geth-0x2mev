@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"context"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -22,6 +23,9 @@ var parsedABI_uniswapv3_pool abi.ABI
 var parsedABI_balancerv2_vault abi.ABI
 var parsedABI_balancerv2_pool abi.ABI
 var parsedABI_OneInchV2_Mooniswap_Pool abi.ABI
+var parsedABI_Curve_V2Pool abi.ABI
+var parsedABI_Curve_V2Pool_2Tokens abi.ABI
+var parsedABI_Curve_LPToken abi.ABI
 var activeOneInchV2DecayPeriods map[common.Address]OneInchV2DecayPeriod
 var blacklistArray_OneinchV2 []string
 var blacklist_OneinchV2 map[string]bool
@@ -58,6 +62,18 @@ func init() {
 	if err != nil {
 		log.Error("Failed to parse contract ABI: %v", err)
 	}
+	parsedABI_Curve_V2Pool, err = abi.JSON(strings.NewReader(ABI_Curve_V2Pool))
+	if err != nil {
+		log.Error("Failed to parse contract ABI: %v", err)
+	}
+	parsedABI_Curve_V2Pool_2Tokens, err = abi.JSON(strings.NewReader(ABI_Curve_V2Pool_2Tokens))
+	if err != nil {
+		log.Error("Failed to parse contract ABI: %v", err)
+	}
+	parsedABI_Curve_LPToken, err = abi.JSON(strings.NewReader(ABI_Curve_LPToken))
+	if err != nil {
+		log.Error("Failed to parse contract ABI: %v", err)
+	}
 	parsedABI_ERC20, err = abi.JSON(strings.NewReader(ABI_ERC20))
 	if err != nil {
 		log.Error("Failed to parse contract ABI: %v", err)
@@ -72,71 +88,69 @@ func init() {
 }
 
 type WrongFactoryAddressError struct {
-    Address string
+	Address string
 }
 
 func (e WrongFactoryAddressError) Error() string {
-    return fmt.Sprintf("pool has wrong factory address: %s", e.Address)
+	return fmt.Sprintf("pool has wrong factory address: %s", e.Address)
 }
 
 type OneInchV2DecayPeriod struct {
-    PoolAddress common.Address
-    StartBlock  big.Int
-    EndBlock    big.Int
+	PoolAddress common.Address
+	StartBlock  big.Int
+	EndBlock    big.Int
 }
 
 func AddPoolToActiveOneInchV2DecayPeriods(poolAddress common.Address, startBlock *big.Int) {
 	// log.Info("Adding pool to active decay periods", "poolAddress", poolAddress.Hex(), "startBlock", startBlock)
-    instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(poolAddress, parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
+	instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(poolAddress, parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
 
-    // Fetch the decayPeriod from the pool
-    var decayPeriodResponse []interface{}
-    callOpts := &bind.CallOpts{}
-    err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &decayPeriodResponse, "decayPeriod")
-    if err != nil {
-        log.Info("Error fetching decayPeriod from contract:", "err", err)
-        return // Consider handling the error appropriately
-    }
+	// Fetch the decayPeriod from the pool
+	var decayPeriodResponse []interface{}
+	callOpts := &bind.CallOpts{}
+	err := instance_OneInchV2_Mooniswap_Pool.Call(callOpts, &decayPeriodResponse, "decayPeriod")
+	if err != nil {
+		log.Info("Error fetching decayPeriod from contract:", "err", err)
+		return // Consider handling the error appropriately
+	}
 	// log.Info("decayPeriodResponse", "decayPeriodResponse", decayPeriodResponse)
-    // Convert the decayPeriod to a big.Int
-    decayPeriod := decayPeriodResponse[0].(*big.Int)
-    // log.Info("decayPeriod", "decayPeriod", decayPeriod)
+	// Convert the decayPeriod to a big.Int
+	decayPeriod := decayPeriodResponse[0].(*big.Int)
+	// log.Info("decayPeriod", "decayPeriod", decayPeriod)
 
-    // The decay period is in seconds, so we need to convert it to blocks and add a buffer of 3 blocks
-    decayPeriodInBlocks := new(big.Int).Div(decayPeriod, big.NewInt(13))
-    decayPeriodInBlocks.Add(decayPeriodInBlocks, big.NewInt(3))
-    // log.Info("decayPeriodInBlocks", "decayPeriodInBlocks", decayPeriodInBlocks)
+	// The decay period is in seconds, so we need to convert it to blocks and add a buffer of 3 blocks
+	decayPeriodInBlocks := new(big.Int).Div(decayPeriod, big.NewInt(13))
+	decayPeriodInBlocks.Add(decayPeriodInBlocks, big.NewInt(3))
+	// log.Info("decayPeriodInBlocks", "decayPeriodInBlocks", decayPeriodInBlocks)
 
-    // Calculate the endBlock
-    endBlock := new(big.Int).Add(startBlock, decayPeriodInBlocks)
-    // log.Info("endBlock", "endBlock", endBlock)
+	// Calculate the endBlock
+	endBlock := new(big.Int).Add(startBlock, decayPeriodInBlocks)
+	// log.Info("endBlock", "endBlock", endBlock)
 
-    // Add or overwrite the pool in the list of active decay periods
-    activeOneInchV2DecayPeriods[poolAddress] = OneInchV2DecayPeriod{
-        PoolAddress: poolAddress,
-        StartBlock:  *startBlock,
-        EndBlock:    *endBlock,
-    }
+	// Add or overwrite the pool in the list of active decay periods
+	activeOneInchV2DecayPeriods[poolAddress] = OneInchV2DecayPeriod{
+		PoolAddress: poolAddress,
+		StartBlock:  *startBlock,
+		EndBlock:    *endBlock,
+	}
 	// log.Info("activeOneInchV2DecayPeriods", "activeOneInchV2DecayPeriods", activeOneInchV2DecayPeriods)
 }
 
-
 func GetAllDecayingOneinchPoolsData(currentBlock *big.Int) []OneInchV2DecayPeriod {
-    validPools := make([]OneInchV2DecayPeriod, 0)
+	validPools := make([]OneInchV2DecayPeriod, 0)
 
-    for address, period := range activeOneInchV2DecayPeriods {
-        if period.EndBlock.Cmp(currentBlock) > 0 {
-            // Pool is still within the decay period
-            validPools = append(validPools, period)
-        } else {
-            // Decay period has ended, remove it from the map
-            delete(activeOneInchV2DecayPeriods, address)
-        }
-    }
+	for address, period := range activeOneInchV2DecayPeriods {
+		if period.EndBlock.Cmp(currentBlock) > 0 {
+			// Pool is still within the decay period
+			validPools = append(validPools, period)
+		} else {
+			// Decay period has ended, remove it from the map
+			delete(activeOneInchV2DecayPeriods, address)
+		}
+	}
 
-    return validPools
+	return validPools
 }
-
 
 type MetaData_OneInchV2 struct {
 	Balance_token0_src  float64
@@ -440,40 +454,130 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 //  END UNISWAPV3 MULTICALL
 
 // start curve
-// we will just use a cache and get the balances every block
-// we will just return a float array with the ether units of the balances of the pool
-// func GetBalanceMetaData_Curve(poolAddress string) ([]float64, error) {
-// 	tokens, decimals, err := GetTokensAndDecimals_Curve(poolAddress)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+// modified version that returns the metaData as an interface because we have different pool types
 
-// 	callOpts := &bind.CallOpts{}
-// 	poolAddressConverted := common.HexToAddress(poolAddress)
-// 	balances_wei := make([]*big.Int, len(tokens))
+type MetaData_CurveV2 struct {
+	Balances_wei []*big.Int
+	PriceScales  []*big.Int
+	D            *big.Int
+}
 
-// 	for i, token := range tokens {
-// 		contractAddress := common.HexToAddress(token)
-// 		instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+func GetBalanceMetaData_Curve(poolAddress string) (interface{}, error) {
+	// find out the pool type
+	poolType, err := GetPoolType_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-// 		result := []interface{}{new(*big.Int)}
-// 		err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		balances_wei[i] = *result[0].(**big.Int)
-// 	}
+	switch poolType {
+	case "v1":
+		return GetPoolBalancesWei_Curve(poolAddress)
+	case "v2":
+		return GetBalanceMetaData_v2_Curve(poolAddress)
+	case "v2_2Tokens":
+		return GetBalanceMetaData_v2_2Tokens_Curve(poolAddress)
+	case "metaEth":
+		return GetPoolBalancesWei_Curve(poolAddress)
+	case "metaStable":
+		return GetBalanceMetaData_metaStable_Curve(poolAddress)
+	default:
+		return nil, fmt.Errorf("pool type not found for curve pool: %s", poolAddress)
+	}
+}
 
-// 	metaData := make([]float64, len(balances_wei))
-// 	for i, balance := range balances_wei {
-// 		metaData[i] = ConvertWeiUnitsToEtherUnits_UsingDecimals(balance, decimals[i])
-// 	}
+func GetBalanceMetaData_v2_Curve(poolAddress string) (*MetaData_CurveV2, error) {
+    balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
 
-// 	return metaData, nil
-// }
+    priceScales, err := GetPriceScalesV2_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
 
-// modified version that returns the balances in wei
-func GetBalanceMetaData_Curve(poolAddress string) ([]*big.Int, error) {
+    d, err := Get_D_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
+
+    metaData := &MetaData_CurveV2{
+        Balances_wei: balances_wei,
+        PriceScales:  priceScales,
+        D:            d,
+    }
+
+    return metaData, nil
+}
+
+type MetaData_CurveV2_2Tokens struct {
+	Balances_wei []*big.Int
+	PriceScale   *big.Int
+	D            *big.Int
+}
+
+func GetBalanceMetaData_v2_2Tokens_Curve(poolAddress string) (*MetaData_CurveV2_2Tokens, error) {
+	balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	priceScale, err := GetPriceScaleV2_2Tokens_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	d, err := Get_D_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	metaData := &MetaData_CurveV2_2Tokens{
+		Balances_wei: balances_wei,
+		PriceScale:   priceScale,
+		D:            d,
+	}
+
+	return metaData, nil
+}
+
+type MetaData_CurveV2_MetaStable struct {
+	Balances_MetaPool_wei	[]*big.Int
+	Balances_BasePool_wei	[]*big.Int
+	LPTokenSupply_BasePool	*big.Int
+}
+
+func GetBalanceMetaData_metaStable_Curve(poolAddress string) (*MetaData_CurveV2_MetaStable, error) {
+    basePoolAddress, err := GetBasePoolAddress_MetaStable_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
+
+    balances_MetaPool_wei, err := GetPoolBalancesWei_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
+
+    balances_BasePool_wei, err := GetPoolBalancesWei_Curve(basePoolAddress)
+    if err != nil {
+        return nil, err
+    }
+
+    lpTokenSupply_BasePool, err := GetLPTokenSupply_BasePool_MetaStable_Curve(poolAddress)
+    if err != nil {
+        return nil, err
+    }
+
+    metaData := &MetaData_CurveV2_MetaStable{
+        Balances_MetaPool_wei:  balances_MetaPool_wei,
+        Balances_BasePool_wei:  balances_BasePool_wei,
+        LPTokenSupply_BasePool: lpTokenSupply_BasePool,
+    }
+
+    return metaData, nil
+}
+
+func GetPoolBalancesWei_Curve(poolAddress string) ([]*big.Int, error) {
 	tokens, _, err := GetTokensAndDecimals_Curve(poolAddress)
 	if err != nil {
 		return nil, err
@@ -484,19 +588,79 @@ func GetBalanceMetaData_Curve(poolAddress string) ([]*big.Int, error) {
 	balances_wei := make([]*big.Int, len(tokens))
 
 	for i, token := range tokens {
-		contractAddress := common.HexToAddress(token)
-		instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+		if token == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+			// This is Ether, get the balance from the pool directly
+			balance, err := client.BalanceAt(context.Background(), poolAddressConverted, nil)
+			if err != nil {
+				return nil, err
+			}
+			balances_wei[i] = balance
+		} else {
+			// This is a token, get the balance from the token contract
+			contractAddress := common.HexToAddress(token)
+			instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
 
-		result := []interface{}{new(*big.Int)}
-		err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
-		if err != nil {
-			return nil, err
+			result := []interface{}{new(*big.Int)}
+			err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
+			if err != nil {
+				return nil, err
+			}
+			balances_wei[i] = *result[0].(**big.Int)
 		}
-		balances_wei[i] = *result[0].(**big.Int)
 	}
 
 	// No need to convert to Ether units, just return the balances in Wei
 	return balances_wei, nil
+}
+
+func GetPriceScalesV2_Curve(poolAddress string) ([]*big.Int, error) {
+	tokens, _, err := GetTokensAndDecimals_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	callOpts := &bind.CallOpts{}
+	poolAddressConverted := common.HexToAddress(poolAddress)
+	priceScales := make([]*big.Int, len(tokens) - 1)
+
+	for i := 0; i < len(tokens) - 1; i++ {
+		instancePool := bind.NewBoundContract(poolAddressConverted, parsedABI_Curve_V2Pool, client, client, client)
+
+		result := []interface{}{new(*big.Int)}
+		bigI := big.NewInt(int64(i))
+		err = instancePool.Call(callOpts, &result, "price_scale", bigI)
+		if err != nil {
+			return nil, err
+		}
+		priceScales[i] = *result[0].(**big.Int)
+	}
+
+	return priceScales, nil
+}
+
+func GetPriceScaleV2_2Tokens_Curve(poolAddress string) (*big.Int, error) {
+	instancePool := bind.NewBoundContract(common.HexToAddress(poolAddress), parsedABI_Curve_V2Pool_2Tokens, client, client, client)
+
+	callOpts := &bind.CallOpts{}
+	result := []interface{}{new(*big.Int)}
+	err := instancePool.Call(callOpts, &result, "price_scale")
+	if err != nil {
+		return nil, err
+	}
+	return *result[0].(**big.Int), nil
+}
+
+func Get_D_Curve(poolAddress string) (*big.Int, error) {
+	poolAddressConverted := common.HexToAddress(poolAddress)
+	instancePool := bind.NewBoundContract(poolAddressConverted, parsedABI_Curve_V2Pool, client, client, client)
+
+	callOpts := &bind.CallOpts{}
+	result := []interface{}{new(*big.Int)}
+	err := instancePool.Call(callOpts, &result, "D")
+	if err != nil {
+		return nil, err
+	}
+	return *result[0].(**big.Int), nil
 }
 
 func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
@@ -532,6 +696,69 @@ func GetTokensAndDecimals_Curve(exchange string) ([]string, []int, error) {
 	}
 
 	return tokens, decimals, nil
+}
+
+func GetPoolType_Curve(exchange string) (string, error) {
+	var data map[string]map[string]interface{}
+	err := json.Unmarshal([]byte(Cache_Curve), &data)
+	if err != nil {
+		return "", err
+	}
+
+	exchangeData, ok := data[exchange]
+	if !ok {
+		return "", fmt.Errorf("exchange not found")
+	}
+
+	poolType, ok := exchangeData["poolType"].(string)
+	if !ok {
+		return "", fmt.Errorf("type not found or not a string")
+	}
+
+	return poolType, nil
+}
+
+func GetBasePoolAddress_MetaStable_Curve(metaPoolAddress string) (string, error) {
+	var data map[string]map[string]interface{}
+	err := json.Unmarshal([]byte(Cache_Curve), &data)
+	if err != nil {
+		return "", err
+	}
+
+	metaPoolData, ok := data[metaPoolAddress]
+	if !ok {
+		return "", fmt.Errorf("metaPool not found")
+	}
+
+	basePool, ok := metaPoolData["basePool"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("basePool not found or not a map")
+	}
+	
+	basePoolAddress, ok := basePool["exchange"].(string)
+	if !ok {
+		return "", fmt.Errorf("exchange not found or not a string")
+	}
+
+	return basePoolAddress, nil
+}
+
+func GetLPTokenSupply_BasePool_MetaStable_Curve(poolAddress string) (*big.Int, error) {
+	tokens, _, err := GetTokensAndDecimals_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
+	//  call totalSupply on the last token in the tokens array
+	contractAddress := common.HexToAddress(tokens[len(tokens)-1])
+	instance_LPToken := bind.NewBoundContract(contractAddress, parsedABI_Curve_LPToken, client, client, client)
+
+	callOpts := &bind.CallOpts{}
+	result := []interface{}{new(*big.Int)}
+	err = instance_LPToken.Call(callOpts, &result, "totalSupply")
+	if err != nil {
+		return nil, err
+	}
+	return *result[0].(**big.Int), nil
 }
 
 // create a function that returns all curve pools in a list
@@ -617,13 +844,13 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 	reserves0_bigInt, ok := reserves[0].(*big.Int)
 	if !ok {
 		fmt.Printf("Failed to assert type: %v", err)
-		return metaData, fmt.Errorf("Failed to assert type: %v", err)
+		return metaData, fmt.Errorf("failed to assert type: %v", err)
 	}
 	token0Reserves := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(reserves0_bigInt, token0Address[0].(common.Address).Hex())
 	reserves1_bigInt, ok := reserves[1].(*big.Int)
 	if !ok {
 		fmt.Printf("Failed to assert type: %v", err)
-		return metaData, fmt.Errorf("Failed to assert type: %v", err)
+		return metaData, fmt.Errorf("failed to assert type: %v", err)
 	}
 	token1Reserves := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(reserves1_bigInt, token1Address[0].(common.Address).Hex())
 
