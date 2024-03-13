@@ -121,14 +121,14 @@ var (
 	// Note: vivid is unsupported because there is no golang-1.6 package for it.
 	// Note: the following Ubuntu releases have been officially deprecated on Launchpad:
 	//   wily, yakkety, zesty, artful, cosmic, disco, eoan, groovy, hirsuite, impish,
-	//   kinetic
+	//   kinetic, lunar
 	debDistroGoBoots = map[string]string{
-		"trusty": "golang-1.11", // EOL: 04/2024
-		"xenial": "golang-go",   // EOL: 04/2026
-		"bionic": "golang-go",   // EOL: 04/2028
-		"focal":  "golang-go",   // EOL: 04/2030
-		"jammy":  "golang-go",   // EOL: 04/2032
-		"lunar":  "golang-go",   // EOL: 01/2024
+		"trusty": "golang-1.11", // 14.04, EOL: 04/2024
+		"xenial": "golang-go",   // 16.04, EOL: 04/2026
+		"bionic": "golang-go",   // 18.04, EOL: 04/2028
+		"focal":  "golang-go",   // 20.04, EOL: 04/2030
+		"jammy":  "golang-go",   // 22.04, EOL: 04/2032
+		"mantic": "golang-go",   // 23.10, EOL: 07/2024
 	}
 
 	debGoBootPaths = map[string]string{
@@ -285,6 +285,7 @@ func doTest(cmdline []string) {
 		coverage = flag.Bool("coverage", false, "Whether to record code coverage")
 		verbose  = flag.Bool("v", false, "Whether to log verbosely")
 		race     = flag.Bool("race", false, "Execute the race detector")
+		short    = flag.Bool("short", false, "Pass the 'short'-flag to go test")
 		cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
 	)
 	flag.CommandLine.Parse(cmdline)
@@ -306,6 +307,9 @@ func doTest(cmdline []string) {
 	// Enable CKZG backend in CI.
 	gotest.Args = append(gotest.Args, "-tags=ckzg")
 
+	// Enable integration-tests
+	gotest.Args = append(gotest.Args, "-tags=integrationtests")
+
 	// Test a single package at a time. CI builders are slow
 	// and some tests run into timeouts under load.
 	gotest.Args = append(gotest.Args, "-p", "1")
@@ -317,6 +321,9 @@ func doTest(cmdline []string) {
 	}
 	if *race {
 		gotest.Args = append(gotest.Args, "-race")
+	}
+	if *short {
+		gotest.Args = append(gotest.Args, "-short")
 	}
 
 	packages := []string{"./..."}
@@ -359,7 +366,7 @@ func doLint(cmdline []string) {
 
 	linter := downloadLinter(*cachedir)
 	lflags := []string{"run", "--config", ".golangci.yml"}
-	build.MustRunCommand(linter, append(lflags, packages...)...)
+	build.MustRunCommandWithOutput(linter, append(lflags, packages...)...)
 	fmt.Println("You have achieved perfection.")
 }
 
