@@ -250,7 +250,7 @@ var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - 333red")
+	fmt.Println("nickdebug NewHeads: init() called - 444purple")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
