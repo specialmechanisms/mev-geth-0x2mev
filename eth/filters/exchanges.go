@@ -29,6 +29,7 @@ var parsedABI_OneInchV2_Mooniswap_Pool abi.ABI
 var parsedABI_Curve_V2Pool abi.ABI
 var parsedABI_Curve_V2Pool_2Tokens abi.ABI
 var parsedABI_Curve_LPToken abi.ABI
+var parsedABI_ZRXV4 abi.ABI
 var activeOneInchV2DecayPeriods map[common.Address]OneInchV2DecayPeriod
 var blacklistArray_OneinchV2 []string
 var blacklist_OneinchV2 map[string]bool
@@ -84,6 +85,10 @@ func init() {
 		log.Error("Failed to parse contract ABI: %v", err)
 	}
 	parsedABI_ERC20, err = abi.JSON(strings.NewReader(ABI_ERC20))
+	if err != nil {
+		log.Error("Failed to parse contract ABI: %v", err)
+	}
+	parsedABI_ZRXV4, err = abi.JSON(strings.NewReader(ABI_ZRXV4))
 	if err != nil {
 		log.Error("Failed to parse contract ABI: %v", err)
 	}
@@ -921,7 +926,7 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 	return metaData, nil
 }
 
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS TODO nick put this into its own file
 // ConvertWeiUnitsToEtherUnits_UsingTokenAddress takes in tokenAmount as a big.Int and token address,
 // and returns the balance in ether units. It now also returns an error if it cannot complete the conversion.
 func ConvertWeiUnitsToEtherUnits_UsingTokenAddress(tokenAmount *big.Int, tokenAddress string) (float64, error) {
@@ -983,4 +988,35 @@ func ConvertWeiUnitsToEtherUnits_UsingDecimals(tokenAmount *big.Int, decimals in
 	tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
 	tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, new(big.Float).Mul(big.NewFloat(math.Pow(10.0, tokenDecimals_float64)), big.NewFloat(1))).Float64()
 	return tokenAmount_etherUnits, nil
+}
+
+func GetERC20TokenBalance(wallet string, token string) (*big.Int, error) {
+	contractAddress := common.HexToAddress(token)
+	poolAddressConverted := common.HexToAddress(wallet)
+	instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+
+	result := []interface{}{new(*big.Int)}
+	callOpts := &bind.CallOpts{}
+	err = instance_ERC20.Call(callOpts, &result, "balanceOf", poolAddressConverted)
+	if err != nil {
+		return nil, err
+	}
+	balance_wei := *result[0].(**big.Int)
+	return balance_wei, nil
+}
+
+func GetERC20TokenAllowance(token string, owner string, spender string) (*big.Int, error) {
+	contractAddress := common.HexToAddress(token)
+	ownerAddress := common.HexToAddress(owner)
+	spenderAddress := common.HexToAddress(spender)
+	instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
+
+	result := []interface{}{new(*big.Int)}
+	callOpts := &bind.CallOpts{}
+	err = instance_ERC20.Call(callOpts, &result, "allowance", ownerAddress, spenderAddress)
+	if err != nil {
+		return nil, err
+	}
+	allowance_wei := *result[0].(**big.Int)
+	return allowance_wei, nil
 }
