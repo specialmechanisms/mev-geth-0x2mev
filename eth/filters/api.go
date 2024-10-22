@@ -227,7 +227,6 @@ type PoolBalanceMetaData struct {
 	ExchangeName string
 	Address      common.Address
 	Topic        common.Hash
-	// TODO nick-smc not sure about the type here yet
 	BalanceMetaData interface{}
 }
 
@@ -241,7 +240,12 @@ var exchangeName_UniswapV2 string
 var exchangeName_UniswapV3 string
 var exchangeName_BalancerV2 string
 var exchangeName_OneInchV2 string
+var exchangeName_ERC20 string
+var exchangeName_ZrxOrderBook string
 var mapOfExchangeNameToTopics = make(map[string][]common.Hash)
+
+var topic_erc20Transfer string
+var topic_erc20Allowance string
 
 // TODO nick give this a better name
 var flattenedValues []common.Hash
@@ -262,6 +266,11 @@ func init() {
 	exchangeName_BalancerV2 = "BalancerV2"
 	// var exchangeName_Curve string = "Curve"
 	exchangeName_OneInchV2 = "OneInchV2"
+	exchangeName_ERC20 = "ERC20"
+	exchangeName_ZrxOrderBook = "ZrxOrderBook"
+
+	topic_erc20Transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	topic_erc20Allowance = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
 
 	mapOfExchangeNameToTopics[exchangeName_UniswapV3] = []common.Hash{
 		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"), // univ3 swap
@@ -282,6 +291,26 @@ func init() {
 		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"), // OneInchV2 Withdrawn
 		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"), // OneInchV2 Swapped
 	}
+	var erc20Events = []common.Hash{
+		common.HexToHash(topic_erc20Transfer),
+		common.HexToHash(topic_erc20Allowance),
+	}
+	mapOfExchangeNameToTopics[exchangeName_ERC20] = erc20Events
+	// TODO nick-0x filter out which ones we do not need
+	var zrxOrderbookEvents = []common.Hash{
+		// common.HexToHash("0x0f6672f78a59ba8e5e5b5d38df3ebc67f3c792e2c9259b8d97d7f00dd78ba1b3"), // TransformedERC20
+		common.HexToHash("0xac75f773e3a92f1a02b12134d65e1f47f8a14eabe4eaf1e24624918e6a8b269f"), // OtcOrderFilled
+		common.HexToHash("0xab614d2b738543c0ea21f56347cf696a3a0c42a7cbec3212a5ca22a4dcff2124"), // LimitOrderFilled
+		common.HexToHash("0xa6eb7cdc219e1518ced964e9a34e61d68a94e4f1569db3e84256ba981ba52753"), // OrderCancelled
+		// common.HexToHash("0x7f4fe3ff8ae440e1570c558da08440b26f89fb1c1f2910cd91ca6452955f121a"), // MetaTransactionExecuted
+		// common.HexToHash("0x50273fa02273cceea9cf085b42de5c8af60624140168bd71357db833535877af"), // ERC721OrderFilled
+		// common.HexToHash("0x20cca81b0e269b265b3229d6b537da91ef475ca0ef55caed7dd30731700ba98d"), // ERC1155OrderFilled
+		// common.HexToHash("0xa015ad2dc32f266993958a0fd9884c746b971b254206f3478bc43e2f125c7b9e"), // ERC721OrderCancelled
+		// common.HexToHash("0x4d5ea7da64f50a4a329921b8d2cab52dff4ebcc58b61d10ff839e28e91445684"), // ERC1155OrderCancelled
+	}
+	mapOfExchangeNameToTopics[exchangeName_ZrxOrderBook] = zrxOrderbookEvents
+	// TODO nick-0x add 0x OrderInfo events
+	// TODO nick-0x add Tempo OrderInfo events
 	// Flatten the map values
 	for _, values := range mapOfExchangeNameToTopics {
 		flattenedValues = append(flattenedValues, values...)
@@ -377,6 +406,8 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 
 		var err error
 		switch topicExchangeName {
+		case exchangeName_ERC20:
+			balanceMetaData, err = GetBalanceMetaData_ERC20(address, eventLog)
 		case exchangeName_UniswapV2:
 			// log.Info("found UniswapV2 log...", "pool", address.Hex())
 			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
@@ -395,8 +426,12 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
 			AddPoolToActiveOneInchV2DecayPeriods(address, currentBlockNumber)
 			// log.Info("finished OneInchV2 log", "address", address.Hex())
+		case exchangeName_ZrxOrderBook:
+			// log.Info("found ZrxOrderBook log...", "pool", address.Hex())
+			balanceMetaData, err = GetBalanceMetaData_ZrxOrderBook(address, eventLog)
+		// TODO nick-0x add tempo
 		default:
-			log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
+			// log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
 		}
 		if err != nil {
 			switch e := err.(type) {

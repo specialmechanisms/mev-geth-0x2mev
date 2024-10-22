@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-redis/redis/v8"
 )
 
@@ -115,6 +117,18 @@ func updateOrdersOnchainData(orderHash string) {
 				return
 			}
 			order.OnChainData = onChainData
+		case ORDERBOOKNAME_TEMPO:
+			tempoOrder, err := TempoConvertOrderToTempoOrder(order)
+			if err != nil {
+				log.Printf("updateOrdersOnchainData: Failed to convert order to TempoOrder: %v", err)
+				return
+			}
+			onChainData, err := TempoGetOnChainData(tempoOrder)
+			if err != nil {
+				log.Printf("updateOrdersOnchainData: Failed to get Tempo on-chain data: %v", err)
+				return
+			}
+			order.OnChainData = onChainData
 		// Add cases for other order books here
 		default:
 			log.Printf("updateOrdersOnchainData: Unknown order book name: %s", order.OrderBookName)
@@ -129,6 +143,31 @@ func updateOrdersOnchainData(orderHash string) {
 		writeUpdateToStream(update)
 	}
 	log.Println("updateOrdersOnchainData: done")
+}
+
+func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface{}) map[string]interface{} {
+    for key, value := range data {
+        switch v := value.(type) {
+        case map[string]interface{}:
+            data[key] = convertValuesToStringsAndRemoveScientificNotation(v)
+        case []interface{}:
+            for i, item := range v {
+                if itemMap, ok := item.(map[string]interface{}); ok {
+                    v[i] = convertValuesToStringsAndRemoveScientificNotation(itemMap)
+                } else {
+                    v[i] = fmt.Sprintf("%v", item)
+                }
+            }
+            data[key] = v
+        case float64:
+            data[key] = fmt.Sprintf("%.0f", v)
+        case int:
+            data[key] = fmt.Sprintf("%d", v)
+        default:
+            data[key] = fmt.Sprintf("%v", value)
+        }
+    }
+    return data
 }
 
 func processUpdates() {
@@ -148,6 +187,7 @@ func processUpdates() {
 			continue
 		}
 
+		updateLoop:
 		for _, update := range updates[0].Messages {
 			fmt.Println("processUpdates: Update:", update)
 			lastID = update.ID
@@ -155,67 +195,65 @@ func processUpdates() {
 			// Create a new Order object to hold the update
 			var orderUpdate Order
 
-			// Iterate over the key-value pairs in the update
-			for key, value := range update.Values {
-				switch key {
-				case "orderHash":
-					orderUpdate.OrderHash = value.(string)
-				case "orderBookName":
-					orderUpdate.OrderBookName = value.(string)
-				// case "makerBalance_weiUnits":
-				// 	balance, ok := new(big.Int).SetString(value.(string), 10)
-				// 	if ok {
-				// 		orderUpdate.OnChainData.MakerBalance_weiUnits = balance
-				// 	}
-				// case "makerAllowance_weiUnits":
-				// 	allowance, ok := new(big.Int).SetString(value.(string), 10)
-				// 	if ok {
-				// 		orderUpdate.OnChainData.MakerAllowance_weiUnits = allowance
-				// 	}
-				// case "orderInfo":
-				// 	var orderInfo interface{}
-				// 	if err := json.Unmarshal([]byte(value.(string)), &orderInfo); err == nil {
-				// 		orderUpdate.OnChainData.OrderInfo = orderInfo
-				// 	}
-				case "offChainData":
-					var offChainData interface{}
-					if err := json.Unmarshal([]byte(value.(string)), &offChainData); err == nil {
-						orderUpdate.OffChainData = offChainData
-					}
-					// TODO: this does not work currently,
-					//    but we also do not need it because the nodes will send the onchainData anyways
-					// case "onChainData":
-					// 	var onChainData OnChainData
-					// 	log.Println("processUpdates: onChainData", value)
-					// 	// print the type of onChainData
-					// 	log.Println("processUpdates: onChainData type", reflect.TypeOf(value))
-					// 	// convert string to map
-					// 	onChainDataMap := value.(map[string]interface{})
-					// 	log.Println("processUpdates: onChainDataMap", onChainDataMap)
-					// 	for k, v := range value.(map[string]interface{}) {
-					// 		switch k {
-					// 		case "orderInfo":
-					// 			var orderInfo interface{}
-					// 			if err := json.Unmarshal([]byte(v.(string)), &orderInfo); err == nil {
-					// 				onChainData.OrderInfo = orderInfo
-					// 			}
-					// 		case "makerBalance_weiUnits":
-					// 			balance, ok := new(big.Int).SetString(v.(string), 10)
-					// 			if ok {
-					// 				onChainData.MakerBalance_weiUnits = balance
-					// 			}
-					// 		case "makerAllowance_weiUnits":
-					// 			allowance, ok := new(big.Int).SetString(v.(string), 10)
-					// 			if ok {
-					// 				onChainData.MakerAllowance_weiUnits = allowance
-					// 			}
-					// 		}
-					// 	}
-
-				}
+			// Deserialize the "data" field into a map
+			var updateData map[string]interface{}
+			if err := json.Unmarshal([]byte(update.Values["data"].(string)), &updateData); err != nil {
+				log.Printf("processUpdates: Failed to unmarshal update data: %v", err)
+				continue
 			}
 
-			log.Println("processUpdates: orderUpdate.OrderHash", orderUpdate.OrderHash)
+			// Convert all values in the map to strings
+			updateData = convertValuesToStringsAndRemoveScientificNotation(updateData)
+			log.Println("processUpdates: updateData (converted to strings)", updateData)
+
+			// Iterate over the key-value pairs in the update
+			var hasOffChainData bool = false
+			for key, value := range updateData {
+				log.Println("processUpdates: key", key)
+				log.Println("processUpdates: value", value)
+				switch key {
+				case "orderHash":
+					log.Println("processUpdates: orderHash", value.(string))
+					orderUpdate.OrderHash = value.(string)
+				case "orderBookName":
+					log.Println("processUpdates: orderBookName", value.(string))
+					orderUpdate.OrderBookName = value.(string)
+				case "offChainData":
+					log.Println("processUpdates: offChainData", value)
+					orderUpdate.OffChainData = value
+					hasOffChainData = true
+				case "deleted":
+					log.Println("processUpdates: deleted", value)
+					// if the order is deleted, remove it from the orderDataStore
+					if deleted, ok := value.(string); ok && strings.ToLower(deleted) == "true" {
+						// print orderDataStore keys
+						for k := range orderDataStore {
+							log.Println("processUpdates: orderDataStore key", k)
+						}
+						mu.Lock()
+						delete(orderDataStore, orderUpdate.OrderHash)
+						mu.Unlock()
+						log.Println("processUpdates: order deleted.", orderUpdate.OrderHash)
+						for k := range orderDataStore {
+							log.Println("processUpdates: orderDataStore key", k)
+						}
+						log.Println("processUpdates: breaking from updateLoop")
+						break updateLoop
+					}
+				}
+				
+			}
+			// if updateData lacks orderHash, skip the update
+			if orderUpdate.OrderHash == "" {
+				log.Println("processUpdates: orderHash not found, skipping")
+				continue
+			}
+			if !hasOffChainData {
+				log.Println("processUpdates: no offChainData, skipping")
+				continue
+			}
+
+			log.Println("processUpdates: there is offChainData, processing")
 
 			// Retrieve existing order data or create a new entry if it doesn't exist
 			mu.Lock()
@@ -224,16 +262,6 @@ func processUpdates() {
 				order = Order{OrderHash: orderUpdate.OrderHash}
 			}
 
-			// Update fields if they exist in the update
-			// if orderUpdate.OnChainData.OrderInfo != nil {
-			// 	order.OnChainData.OrderInfo = orderUpdate.OnChainData.OrderInfo
-			// }
-			// if orderUpdate.OnChainData.MakerBalance_weiUnits != nil {
-			// 	order.OnChainData.MakerBalance_weiUnits = orderUpdate.OnChainData.MakerBalance_weiUnits
-			// }
-			// if orderUpdate.OnChainData.MakerAllowance_weiUnits != nil {
-			// 	order.OnChainData.MakerAllowance_weiUnits = orderUpdate.OnChainData.MakerAllowance_weiUnits
-			// }
 			if orderUpdate.OffChainData != nil {
 				order.OffChainData = orderUpdate.OffChainData
 			}
@@ -253,10 +281,12 @@ func processUpdates() {
 
 			updateOrdersOnchainData(order.OrderHash)
 		}
+
 		// this is required to release the lock to create the snapshot.
 		// we might want to keep a timeout here on the nodes as well
 		time.Sleep(50 * time.Millisecond)
 	}
+
 }
 
 // func writeUpdateToStream(updateData interface{}) {
@@ -332,20 +362,20 @@ func StartOrderBookAggregatorService() {
 
 	log.Println("StartOrderBookAggregatorService: redis initialized")
 
-	cleanUpRedisStreams()
+	// cleanUpRedisStreams()
 
-	ZRXCreateOrder()
+	// ZRXCreateOrder()
 
 	// Create an initial snapshot if none exists
-	createSnapshot()
+	// createSnapshot()
 
 	// Fetch initial snapshot and initialize local state
-	fetchSnapshot()
+	// fetchSnapshot()
 	log.Println("StartOrderBookAggregatorService: initial snapshot fetched")
 
 	// Start a goroutine to process updates continuously
-	processExistingOrders()
-	// go processUpdates()
+	// processExistingOrders()
+	go processUpdates()
 	// log.Println("process updates started")
 
 	time.Sleep(100 * time.Millisecond)
@@ -361,8 +391,9 @@ func WaitForHTTPServerToStart() {
 	// doing a random call until we get a valid response to know that the server has started
 	log.Println("StartOrderBookAggregatorService: waiting for http server to start...")
 	for {
-		balance, err := GetERC20TokenBalance("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-			"0xdAC17F958D2ee523a2206206994597C13D831ec7")
+		balance, err := GetERC20TokenBalance(
+			common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+			common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"))
 		if err == nil {
 			log.Println("StartOrderBookAggregatorService: http server started")
 			log.Println("StartOrderBookAggregatorService: balance", balance)
