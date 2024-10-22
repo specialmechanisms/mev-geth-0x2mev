@@ -3,12 +3,10 @@ package filters
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 	"context"
 	"sync"
-	"errors"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -931,114 +929,3 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 	return metaData, nil
 }
 
-// HELPER FUNCTIONS TODO nick put this into its own file
-// ConvertWeiUnitsToEtherUnits_UsingTokenAddress takes in tokenAmount as a big.Int and token address,
-// and returns the balance in ether units. It now also returns an error if it cannot complete the conversion.
-func ConvertWeiUnitsToEtherUnits_UsingTokenAddress(tokenAmount *big.Int, tokenAddress string) (float64, error) {
-	// Check if tokenAmount is nil, zero, or negative
-	if tokenAmount == nil || tokenAmount.Sign() <= 0 {
-		if tokenAmount.Sign() == 0 {
-			return 0, nil
-		}
-		err := errors.New("tokenAmount is nil or negative")
-		fmt.Printf("Error: %v, tokenAmount: %v", err, tokenAmount)
-		return 0, err
-	}
-
-	// if tokenAddress is ether, then convert tokenAmount to ether units and return it
-	for _, knownAddress := range KnownEthereumAddresses {
-		if tokenAddress == knownAddress {
-			// convert tokenAmount that are in wei units to ether units
-			tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
-			tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, big.NewFloat(math.Pow(10.0, 18))).Float64()
-			return tokenAmount_etherUnits, nil // Return nil error on success
-		}
-	}
-
-	// Check if tokenAddress is a valid Ethereum address
-	if !common.IsHexAddress(tokenAddress) {
-		err := fmt.Errorf("invalid token address: %s", tokenAddress)
-		fmt.Printf("Error: %v, tokenAddress: %s", err, tokenAddress)
-		return 0, err
-	}
-	var contractAddress common.Address = common.HexToAddress(tokenAddress)
-	instance_ERC20 := bind.NewBoundContract(contractAddress, parsedABI_ERC20, client, client, client)
-	// Get token decimals
-	var tokenDecimals []interface{}
-	callOpts := &bind.CallOpts{}
-	err := instance_ERC20.Call(callOpts, &tokenDecimals, "decimals")
-	if err != nil {
-		fmt.Printf("Failed to retrieve token decimals: %v, tokenAddress: %s", err, tokenAddress)
-		return 0, err // Return the error to the caller
-	}
-	if len(tokenDecimals) == 0 {
-		err := fmt.Errorf("tokenDecimals is empty")
-		fmt.Printf("Error: %v, tokenAddress: %s", err, tokenAddress)
-		return 0, err // Return an error indicating tokenDecimals is empty
-	}
-	// Convert tokenAmount that are in wei units to ether units using the decimals
-	tokenDecimals_float64 := float64(tokenDecimals[0].(uint8))
-	tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
-	tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, new(big.Float).Mul(big.NewFloat(math.Pow(10.0, tokenDecimals_float64)), big.NewFloat(1))).Float64()
-	return tokenAmount_etherUnits, nil // Return nil error on success
-}
-// create a function that takes in tokemAmount as a bigInt and decimals as int and returns the balance in ether units
-func ConvertWeiUnitsToEtherUnits_UsingDecimals(tokenAmount *big.Int, decimals int) (float64, error) {
-	// Check if tokenAmount is nil, zero, or negative
-	if tokenAmount == nil || tokenAmount.Sign() <= 0 {
-		if tokenAmount.Sign() == 0 {
-			return 0, nil
-		}
-		err := errors.New("tokenAmount is nil or negative")
-		fmt.Printf("Error: %v, tokenAmount: %v", err, tokenAmount)
-		return 0, err
-	}
-	// Check for valid decimals value (typically, 0 <= decimals <= 18 for Ethereum tokens)
-	if decimals < 0 || decimals > 36 {
-		return 0, fmt.Errorf("invalid decimals: %d. Decimals should be between 0 and 36", decimals)
-	}
-	// convert tokenAmount that are in wei units to ether units using the decimals
-	tokenDecimals_float64 := float64(decimals)
-	tokenAmount_float64 := new(big.Float).SetInt(tokenAmount)
-	tokenAmount_etherUnits, _ := new(big.Float).Quo(tokenAmount_float64, new(big.Float).Mul(big.NewFloat(math.Pow(10.0, tokenDecimals_float64)), big.NewFloat(1))).Float64()
-	return tokenAmount_etherUnits, nil
-}
-
-type MetaData_ERC20Balances struct {
-	SenderAddress               common.Address  `json:"SenderAddress"`
-	SenderBalance_etherUnits    float64         `json:"SenderBalance_etherUnits"`
-	ReceiverAddress             common.Address  `json:"ReceiverAddress"`
-	ReceiverBalance_etherUnits  float64         `json:"ReceiverBalance_etherUnits"`
-}
-
-type MetaData_ERC20Allowance struct {
-	OwnerAddress       common.Address  `json:"OwnerAddress"`
-	SpenderAddress     common.Address  `json:"SpenderAddress"`
-	Amount_etherUnits  float64         `json:"Amount_etherUnits"`
-}
-
-func GetERC20TokenBalance(wallet common.Address, token common.Address) (*big.Int, error) {
-	instance_ERC20 := bind.NewBoundContract(token, parsedABI_ERC20, client, client, client)
-
-	result := []interface{}{new(*big.Int)}
-	callOpts := &bind.CallOpts{}
-	err = instance_ERC20.Call(callOpts, &result, "balanceOf", wallet)
-	if err != nil {
-		return nil, err
-	}
-	balance_wei := *result[0].(**big.Int)
-	return balance_wei, nil
-}
-
-func GetERC20TokenAllowance(token common.Address, owner common.Address, spender common.Address) (*big.Int, error) {
-	instance_ERC20 := bind.NewBoundContract(token, parsedABI_ERC20, client, client, client)
-
-	result := []interface{}{new(*big.Int)}
-	callOpts := &bind.CallOpts{}
-	err = instance_ERC20.Call(callOpts, &result, "allowance", owner, spender)
-	if err != nil {
-		return nil, err
-	}
-	allowance_wei := *result[0].(**big.Int)
-	return allowance_wei, nil
-}

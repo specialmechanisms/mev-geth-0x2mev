@@ -142,7 +142,6 @@ func updateOrdersOnchainData(orderHash string) {
 		}
 		writeUpdateToStream(update)
 	}
-	log.Println("updateOrdersOnchainData: done")
 }
 
 func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface{}) map[string]interface{} {
@@ -171,7 +170,6 @@ func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface
 }
 
 func processUpdates() {
-	log.Println("checking for updates")
 	for {
 		// Fetch updates from Redis
 		updates, err := sharedRdb.XRead(ctx, &redis.XReadArgs{
@@ -189,7 +187,6 @@ func processUpdates() {
 
 		updateLoop:
 		for _, update := range updates[0].Messages {
-			fmt.Println("processUpdates: Update:", update)
 			lastID = update.ID
 
 			// Create a new Order object to hold the update
@@ -204,40 +201,24 @@ func processUpdates() {
 
 			// Convert all values in the map to strings
 			updateData = convertValuesToStringsAndRemoveScientificNotation(updateData)
-			log.Println("processUpdates: updateData (converted to strings)", updateData)
 
 			// Iterate over the key-value pairs in the update
 			var hasOffChainData bool = false
 			for key, value := range updateData {
-				log.Println("processUpdates: key", key)
-				log.Println("processUpdates: value", value)
 				switch key {
 				case "orderHash":
-					log.Println("processUpdates: orderHash", value.(string))
 					orderUpdate.OrderHash = value.(string)
 				case "orderBookName":
-					log.Println("processUpdates: orderBookName", value.(string))
 					orderUpdate.OrderBookName = value.(string)
 				case "offChainData":
-					log.Println("processUpdates: offChainData", value)
 					orderUpdate.OffChainData = value
 					hasOffChainData = true
 				case "deleted":
-					log.Println("processUpdates: deleted", value)
 					// if the order is deleted, remove it from the orderDataStore
 					if deleted, ok := value.(string); ok && strings.ToLower(deleted) == "true" {
-						// print orderDataStore keys
-						for k := range orderDataStore {
-							log.Println("processUpdates: orderDataStore key", k)
-						}
 						mu.Lock()
 						delete(orderDataStore, orderUpdate.OrderHash)
 						mu.Unlock()
-						log.Println("processUpdates: order deleted.", orderUpdate.OrderHash)
-						for k := range orderDataStore {
-							log.Println("processUpdates: orderDataStore key", k)
-						}
-						log.Println("processUpdates: breaking from updateLoop")
 						break updateLoop
 					}
 				}
@@ -249,11 +230,8 @@ func processUpdates() {
 				continue
 			}
 			if !hasOffChainData {
-				log.Println("processUpdates: no offChainData, skipping")
 				continue
 			}
-
-			log.Println("processUpdates: there is offChainData, processing")
 
 			// Retrieve existing order data or create a new entry if it doesn't exist
 			mu.Lock()
@@ -272,12 +250,6 @@ func processUpdates() {
 			// Update the in-memory data store
 			orderDataStore[order.OrderHash] = order
 			mu.Unlock()
-
-			log.Println("processUpdates: order", order)
-			orderBookName := order.OrderBookName
-			log.Println("processUpdates: orderBookName", orderBookName)
-
-			log.Println("processUpdates: orderDataStore updated")
 
 			updateOrdersOnchainData(order.OrderHash)
 		}

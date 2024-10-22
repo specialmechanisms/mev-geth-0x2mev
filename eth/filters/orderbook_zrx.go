@@ -335,26 +335,6 @@ func ZRXConvertZRXOrderRawToZRXOrder(zrxOrder ZRXOrderRaw) (ZRXOrder, error) {
 func ZRXGetOnChainData(order ZRXOrder) (OnChainData, error) {
 	var onChainData OnChainData
 
-	// order, err = ZRXConvertOrderToZRXOrder(order)
-	if err != nil {
-		return onChainData, fmt.Errorf("failed to convert order to ZRXOrder: %v", err)
-	}
-
-	// Log the type of OffChainData
-	log.Printf("ZRXGetOnChainData: OffChainData type: %T", order.OffChainData)
-
-	// // Attempt to assert OffChainData to ZRXOffChainData
-	// offChainData, ok := order.ZRXOffChainData.(ZRXOffChainData)
-	// if !ok {
-	//     // Log the actual content of OffChainData
-	//     log.Printf("ZRXGetOnChainData: OffChainData content: %+v", order.OffChainData)
-	// }
-
-	// Log the maker address
-	log.Println("ZRXGetOnChainData: maker address", order.OffChainData.Order.Maker)
-	log.Println("ZRXGetOnChainData: maker token", order.OffChainData.Order.MakerToken)
-	// Retrieve the MakerBalance_weiUnits (maker's makerToken balance)
-	// Assuming you have a function to get the balance
 	makerBalance_weiUnits, err := GetERC20TokenBalance(
 		common.HexToAddress(order.OffChainData.Order.Maker),
 		common.HexToAddress(order.OffChainData.Order.MakerToken))
@@ -363,8 +343,6 @@ func ZRXGetOnChainData(order ZRXOrder) (OnChainData, error) {
 	}
 	onChainData.MakerBalance_weiUnits = makerBalance_weiUnits
 
-	// Retrieve the MakerAllowance_weiUnits (maker's allowance)
-	// Assuming you have a function to get the allowance
 	makerAllowance_weiUnits, err := GetERC20TokenAllowance(
 		common.HexToAddress(order.OffChainData.Order.MakerToken),
 		common.HexToAddress(order.OffChainData.Order.Maker),
@@ -379,26 +357,18 @@ func ZRXGetOnChainData(order ZRXOrder) (OnChainData, error) {
 	if err != nil {
 		return onChainData, fmt.Errorf("failed to get order info: %v", err)
 	}
-	log.Println("ZRXGetOnChainData: orderInfo", orderInfo)
 
 	onChainData.OrderInfo = orderInfo
-
-	// Log the retrieved on-chain data
-	log.Printf("ZRXGetOnChainData: Retrieved on-chain data: %+v", onChainData)
 
 	return onChainData, nil
 }
 
 func ZRXGetOrderInfo(order ZRXOrder) (ZRXOrderInfo, error) {
-	log.Println("ZRXGetOrderInfo: order", order)
-	log.Println("ZRXGetOrderInfo: order.OrderHash", order.OrderHash)
 
 	// get the verifying contract which is inside of ZRXOrderDetails
 	var orderInfoResponse []interface{}
 	var contractAddress common.Address = common.HexToAddress(order.OffChainData.Order.VerifyingContract)
 	instance_zrxExchangeProxy := bind.NewBoundContract(contractAddress, parsedABI_ZRXV4, client, client, client)
-
-	log.Println("ZRXGetOrderInfo: verifying contract", order.OffChainData.Order.VerifyingContract)
 
 	// Define the input parameters as a struct
 	inputParameters := struct {
@@ -436,7 +406,6 @@ func ZRXGetOrderInfo(order ZRXOrder) (ZRXOrderInfo, error) {
 		log.Println("ZRXGetOrderInfo: failed to get order info: ", err)
 		return ZRXOrderInfo{}, err
 	}
-	log.Println("ZRXGetOrderInfo: orderInfoResponse", orderInfoResponse)
 
 	// Assert the response to the expected struct
 	orderInfo := orderInfoResponse[0].(struct {
@@ -472,137 +441,6 @@ func ConvertZRXOrderToMap(order Order) map[string]interface{} {
 	orderMap["onChainData"] = string(onChainDataJSON)
 
 	return orderMap
-}
-
-func GetBalanceMetaData_ERC20_Transfer(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Balances, error) {
-	var result MetaData_ERC20Balances
-	log.Println("found erc20 transfer event")
-	// event Transfer(address indexed src, address indexed dst, uint wad);
-	// src is the sender, dst is the receiver, wad is the amount in wei
-
-	// make sure the event log has a length of at least 3
-	if len(eventLog.Topics) != 3 {
-		return result, fmt.Errorf("event log does not have the correct number of topics. token:", tokenAddress)
-	}
-
-	senderAddress := common.HexToAddress(eventLog.Topics[1].Hex())
-	receiverAddress := common.HexToAddress(eventLog.Topics[2].Hex())
-	log.Println("senderAddress", senderAddress)
-	log.Println("receiverAddress", receiverAddress)
-
-	senderBalance_weiUnits, err := GetERC20TokenBalance(senderAddress, tokenAddress)
-	if err != nil {
-		return result, fmt.Errorf("failed to get balance: %v", err)
-	}
-	log.Println("senderBalance_weiUnits", senderBalance_weiUnits)
-	receiverBalance_weiUnits, err := GetERC20TokenBalance(receiverAddress, tokenAddress)
-	if err != nil {
-		return result, fmt.Errorf("failed to get balance: %v", err)
-	}
-	log.Println("receiverBalance_weiUnits", receiverBalance_weiUnits)
-
-	senderBalance_etherUnits, err := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(
-		senderBalance_weiUnits, tokenAddress.Hex())
-	if err != nil {
-		return result, fmt.Errorf("failed to convert balance to ether units: %v", err)
-	}
-	log.Println("receiverBalance_etherUnits", senderBalance_etherUnits)
-	receiverBalance_etherUnits, err := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(
-		receiverBalance_weiUnits, tokenAddress.Hex())
-	if err != nil {
-		return result, fmt.Errorf("failed to convert balance to ether units: %v", err)
-	}
-	log.Println("receiverBalance_etherUnits", receiverBalance_etherUnits)
-
-	result = MetaData_ERC20Balances{
-		SenderAddress:              senderAddress,
-		SenderBalance_etherUnits:   senderBalance_etherUnits,
-		ReceiverAddress:            receiverAddress,
-		ReceiverBalance_etherUnits: receiverBalance_etherUnits,
-	}
-	log.Println("result", result)
-	return result, nil
-}
-
-func GetBalanceMetaData_ERC20_Allowance(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Allowance, error) {
-	log.Println("found erc20 allowance event")
-	// emit Approval(msg.sender, usr, wad);
-	var result MetaData_ERC20Allowance
-	// we do not need to make a call because everything is already in the event log
-
-	// make sure the event log has a length of at least 3
-	if len(eventLog.Topics) != 3 {
-		return result, fmt.Errorf("event log does not have the correct number of topics. token:", tokenAddress)
-	}
-
-	log.Println("tokenAddress", tokenAddress)
-	log.Println("eventLog", eventLog)
-	ownerAddress := common.HexToAddress(eventLog.Topics[1].Hex())
-	spenderAddress := common.HexToAddress(eventLog.Topics[2].Hex())
-	amount_weiUnits := new(big.Int).SetBytes(eventLog.Data)
-	log.Println("ownerAddress", ownerAddress)
-	log.Println("spenderAddress", spenderAddress)
-	log.Println("amount_weiUnits", amount_weiUnits)
-	// // make sure addresses are right length
-	// if len(ownerAddress) != 42 || len(spenderAddress) != 42 {
-	//     return result, fmt.Errorf("owner or spender address is not the correct length")
-	// }
-	amount_etherUnits, err := ConvertWeiUnitsToEtherUnits_UsingTokenAddress(
-		amount_weiUnits, tokenAddress.Hex())
-	if err != nil {
-		return result, fmt.Errorf("failed to convert allowance to ether units: %v", err)
-	}
-	log.Println("amount_etherUnits", amount_etherUnits)
-	result = MetaData_ERC20Allowance{
-		OwnerAddress:      ownerAddress,
-		SpenderAddress:    spenderAddress,
-		Amount_etherUnits: amount_etherUnits,
-	}
-	log.Println("result", result)
-	return result, nil
-}
-
-func GetBalanceMetaData_ERC20(tokenAddress common.Address, eventLog *Log) (interface{}, error) {
-	// Get the balance of the token
-
-	// make sure the event log has a length of at least 3
-	if len(eventLog.Topics) != 3 {
-		return nil, fmt.Errorf("event log does not have the correct number of topics. token:", tokenAddress)
-	}
-
-	// call the decimals function of the token to make increase the chance of the token to be a valid ERC20 token
-	_, err := GetTokenDecimals(tokenAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token decimals for tokenAddress: %v", tokenAddress)
-	}
-
-	switch eventLog.Topics[0].Hex() {
-	case topic_erc20Transfer:
-		return GetBalanceMetaData_ERC20_Transfer(tokenAddress, eventLog)
-	case topic_erc20Allowance:
-		return GetBalanceMetaData_ERC20_Allowance(tokenAddress, eventLog)
-	default:
-		return "", fmt.Errorf("failed to get balance meta data for ERC20 event log")
-	}
-}
-
-func GetTokenDecimals(tokenAddress common.Address) (int, error) {
-	// get token decimals
-	var tokenDecimals []interface{}
-
-	for _, knownAddress := range KnownEthereumAddresses {
-		if tokenAddress.Hex() == knownAddress {
-			return 18, nil
-		}
-	}
-
-	instance_token := bind.NewBoundContract(tokenAddress, parsedABI_ERC20, client, client, client)
-	callOpts := &bind.CallOpts{}
-	err := instance_token.Call(callOpts, &tokenDecimals, "decimals")
-	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve value of variable: %v", err)
-	}
-	return int(tokenDecimals[0].(uint8)), nil
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well

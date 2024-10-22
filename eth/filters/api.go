@@ -296,7 +296,6 @@ func init() {
 		common.HexToHash(topic_erc20Allowance),
 	}
 	mapOfExchangeNameToTopics[exchangeName_ERC20] = erc20Events
-	// TODO nick-0x filter out which ones we do not need
 	var zrxOrderbookEvents = []common.Hash{
 		// common.HexToHash("0x0f6672f78a59ba8e5e5b5d38df3ebc67f3c792e2c9259b8d97d7f00dd78ba1b3"), // TransformedERC20
 		common.HexToHash("0xac75f773e3a92f1a02b12134d65e1f47f8a14eabe4eaf1e24624918e6a8b269f"), // OtcOrderFilled
@@ -309,8 +308,16 @@ func init() {
 		// common.HexToHash("0x4d5ea7da64f50a4a329921b8d2cab52dff4ebcc58b61d10ff839e28e91445684"), // ERC1155OrderCancelled
 	}
 	mapOfExchangeNameToTopics[exchangeName_ZrxOrderBook] = zrxOrderbookEvents
-	// TODO nick-0x add 0x OrderInfo events
-	// TODO nick-0x add Tempo OrderInfo events
+	// TODO nick-0x add Tempo OrderInfo events -> let's wait for live deployment and then just read it from etherscan 
+	// 	and test it live
+	// TODO nick-0x ADD REAL TOPICS - THOSE ARE THE ONES FROM THE 0x PROTOCOL
+	// TODO nick-0x OrderCancelled is the same as the 0x event. this is bad.
+	//   a solution could be to have only one orderbookEvents list and then look up the hash in orderDataStore to get the exchange name etc.
+	var tempoOrderbookEvents = []common.Hash{
+		common.HexToHash("0x2bf10746b5979a7ded837e52451fcc5341fe2485928bd737e11b16e1a29b9366"), // Fill
+		common.HexToHash("0xa6eb7cdc219e1518ced964e9a34e61d68a94e4f1569db3e84256ba981ba52753"), // OrderCancelled
+	}
+	mapOfExchangeNameToTopics["Tempo"] = tempoOrderbookEvents
 	// Flatten the map values
 	for _, values := range mapOfExchangeNameToTopics {
 		flattenedValues = append(flattenedValues, values...)
