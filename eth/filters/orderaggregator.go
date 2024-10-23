@@ -37,12 +37,25 @@ var (
 	orderDataStore = make(map[string]Order)
 )
 
-func initRedis() {
-	sharedRdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+func startOrderBookAggregatorService() {
+
+	waitForHTTPServerToStart()
+
+	log.Println("startOrderBookAggregatorService: orderbook aggregator started")
+
+	initRedis()
+
+	log.Println("startOrderBookAggregatorService: redis initialized")
+
+	// TODO nick-0x test this as soon as you have the orderAggregator running. we need snapshots to test this
+	// Fetch initial snapshot and initialize local state
+	// fetchSnapshot()
+	// log.Println("startOrderBookAggregatorService: initial snapshot fetched")
+	// Start a goroutine to process updates continuously
+	// processExistingOrders()
+
+	go processUpdates()
+	log.Println("startOrderBookAggregatorService: processUpdates started")
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running.
@@ -79,18 +92,6 @@ func fetchSnapshot() {
 	}
 }
 
-// TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
-//	you might want to checkout processUpdates for things like convertValuesToStringsAndRemoveScientificNotation
-func processExistingOrders() {
-	log.Println("processExistingOrders: processing existing orders")
-	for orderHash, orderData := range orderDataStore {
-		// Process the order data
-		fmt.Printf("processExistingOrders: Processing order data for %s: %v\n", orderHash, orderData)
-		updateOrdersOnchainData(orderHash)
-	}
-	log.Println("processExistingOrders: all existing orders processed")
-}
-
 func updateOrdersOnchainData(orderHash string) {
 	// Retrieve existing order data
 	mu.Lock()
@@ -114,12 +115,12 @@ func updateOrdersOnchainData(orderHash string) {
 			}
 			order.OnChainData = onChainData
 		case ORDERBOOKNAME_TEMPO:
-			tempoOrder, err := TempoConvertOrderToTempoOrder(order)
+			tempoOrder, err := tempoConvertOrderToTempoOrder(order)
 			if err != nil {
 				log.Printf("updateOrdersOnchainData: Failed to convert order to TempoOrder: %v", err)
 				return
 			}
-			onChainData, err := TempoGetOnChainData(tempoOrder)
+			onChainData, err := tempoGetOnChainData(tempoOrder)
 			if err != nil {
 				log.Printf("updateOrdersOnchainData: Failed to get Tempo on-chain data: %v", err)
 				return
@@ -140,29 +141,17 @@ func updateOrdersOnchainData(orderHash string) {
 	}
 }
 
-func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface{}) map[string]interface{} {
-	for key, value := range data {
-		switch v := value.(type) {
-		case map[string]interface{}:
-			data[key] = convertValuesToStringsAndRemoveScientificNotation(v)
-		case []interface{}:
-			for i, item := range v {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					v[i] = convertValuesToStringsAndRemoveScientificNotation(itemMap)
-				} else {
-					v[i] = fmt.Sprintf("%v", item)
-				}
-			}
-			data[key] = v
-		case float64:
-			data[key] = fmt.Sprintf("%.0f", v)
-		case int:
-			data[key] = fmt.Sprintf("%d", v)
-		default:
-			data[key] = fmt.Sprintf("%v", value)
-		}
+// TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
+//
+//	you might want to checkout processUpdates for things like convertValuesToStringsAndRemoveScientificNotation
+func processExistingOrders() {
+	log.Println("processExistingOrders: processing existing orders")
+	for orderHash, orderData := range orderDataStore {
+		// Process the order data
+		fmt.Printf("processExistingOrders: Processing order data for %s: %v\n", orderHash, orderData)
+		updateOrdersOnchainData(orderHash)
 	}
-	return data
+	log.Println("processExistingOrders: all existing orders processed")
 }
 
 func processUpdates() {
@@ -278,50 +267,14 @@ func writeUpdateToStream(updateMap map[string]interface{}) error {
 	return nil
 }
 
-func StartOrderBookAggregatorService() {
-
-	WaitForHTTPServerToStart()
-
-	log.Println("StartOrderBookAggregatorService: orderbook aggregator started")
-
-	initRedis()
-
-	log.Println("StartOrderBookAggregatorService: redis initialized")
-
-	// TODO nick-0x test this as soon as you have the orderAggregator running. we need snapshots to test this
-	// Fetch initial snapshot and initialize local state
-	// fetchSnapshot()
-	// log.Println("StartOrderBookAggregatorService: initial snapshot fetched")
-	// Start a goroutine to process updates continuously
-	// processExistingOrders()
-
-	go processUpdates()
-	log.Println("StartOrderBookAggregatorService: processUpdates started")
-}
-
-func WaitForHTTPServerToStart() {
-	// doing a random call until we get a valid response to know that the server has started
-	log.Println("StartOrderBookAggregatorService: waiting for http server to start...")
-	for {
-		_, err := GetERC20TokenBalance(
-			common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-			common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"))
-		if err == nil {
-			log.Println("StartOrderBookAggregatorService: http server started")
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
-}
-
-func GetBalanceMetaData_OrderBooks(address common.Address, eventLog *Log) (interface{}, error) {
+func getBalanceMetaData_OrderBooks(address common.Address, eventLog *Log) (interface{}, error) {
 	switch address {
 	case ORDERBOOKADDRESS_ZRX:
-		return GetBalanceMetaData_Zrx(address, eventLog)
+		return getBalanceMetaData_Zrx(eventLog)
 	case ORDERBOOKADDRESS_TEMPO:
-		return GetBalanceMetaData_Tempo(address, eventLog)
+		return getBalanceMetaData_Tempo(eventLog)
 	// Add cases for other order books here
 	default:
-		return "", fmt.Errorf("address not implemented in GetBalanceMetaData_OrderBook: %s", address.Hex())
+		return "", fmt.Errorf("address not implemented in getBalanceMetaData_OrderBook: %s", address.Hex())
 	}
 }

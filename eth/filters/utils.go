@@ -3,10 +3,13 @@ package filters
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"math"
 	"math/big"
+	"time"
+	"github.com/go-redis/redis/v8"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // ConvertWeiUnitsToEtherUnits_UsingTokenAddress takes in tokenAmount as a big.Int and token address,
@@ -121,7 +124,7 @@ func GetERC20TokenAllowance(token common.Address, owner common.Address, spender 
 	return allowance_wei, nil
 }
 
-func GetBalanceMetaData_ERC20_Transfer(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Balances, error) {
+func getBalanceMetaData_ERC20_Transfer(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Balances, error) {
 	var result MetaData_ERC20Balances
 
 	// make sure the event log has a length of at least 3
@@ -161,7 +164,7 @@ func GetBalanceMetaData_ERC20_Transfer(tokenAddress common.Address, eventLog *Lo
 	return result, nil
 }
 
-func GetBalanceMetaData_ERC20_Allowance(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Allowance, error) {
+func getBalanceMetaData_ERC20_Allowance(tokenAddress common.Address, eventLog *Log) (MetaData_ERC20Allowance, error) {
 	// emit Approval(msg.sender, usr, wad);
 	var result MetaData_ERC20Allowance
 	// we do not need to make a call because everything is already in the event log
@@ -188,12 +191,12 @@ func GetBalanceMetaData_ERC20_Allowance(tokenAddress common.Address, eventLog *L
 	return result, nil
 }
 
-func GetBalanceMetaData_ERC20(tokenAddress common.Address, eventLog *Log) (interface{}, error) {
+func getBalanceMetaData_ERC20(tokenAddress common.Address, eventLog *Log) (interface{}, error) {
 	// Get the balance of the token
 
 	// make sure the event log has a length of at least 3
 	if len(eventLog.Topics) != 3 {
-		return nil, fmt.Errorf("event log does not have the correct number of topics. token:", tokenAddress)
+		return nil, fmt.Errorf("event log does not have the correct number of topics. token: %s", tokenAddress.Hex())
 	}
 
 	// call the decimals function of the token to make increase the chance of the token to be a valid ERC20 token
@@ -204,9 +207,9 @@ func GetBalanceMetaData_ERC20(tokenAddress common.Address, eventLog *Log) (inter
 
 	switch eventLog.Topics[0].Hex() {
 	case topic_erc20Transfer:
-		return GetBalanceMetaData_ERC20_Transfer(tokenAddress, eventLog)
+		return getBalanceMetaData_ERC20_Transfer(tokenAddress, eventLog)
 	case topic_erc20Allowance:
-		return GetBalanceMetaData_ERC20_Allowance(tokenAddress, eventLog)
+		return getBalanceMetaData_ERC20_Allowance(tokenAddress, eventLog)
 	default:
 		return "", fmt.Errorf("failed to get balance meta data for ERC20 event log")
 	}
@@ -234,4 +237,51 @@ func GetTokenDecimals(tokenAddress common.Address) (int, error) {
 // intToBool converts an integer to a boolean.
 func intToBool(i int) bool {
 	return i != 0
+}
+
+func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface{}) map[string]interface{} {
+	for key, value := range data {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			data[key] = convertValuesToStringsAndRemoveScientificNotation(v)
+		case []interface{}:
+			for i, item := range v {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					v[i] = convertValuesToStringsAndRemoveScientificNotation(itemMap)
+				} else {
+					v[i] = fmt.Sprintf("%v", item)
+				}
+			}
+			data[key] = v
+		case float64:
+			data[key] = fmt.Sprintf("%.0f", v)
+		case int:
+			data[key] = fmt.Sprintf("%d", v)
+		default:
+			data[key] = fmt.Sprintf("%v", value)
+		}
+	}
+	return data
+}
+
+func waitForHTTPServerToStart() {
+	// doing a random call until we get a valid response to know that the server has started
+	for {
+		_, err := GetERC20TokenBalance(
+			common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+			common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"))
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+
+func initRedis() {
+	sharedRdb = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
 }

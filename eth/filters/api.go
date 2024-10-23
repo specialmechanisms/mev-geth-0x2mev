@@ -224,9 +224,9 @@ func (api *FilterAPI) NewBlockFilter() rpc.ID {
 }
 
 type PoolBalanceMetaData struct {
-	ExchangeName string
-	Address      common.Address
-	Topic        common.Hash
+	ExchangeName    string
+	Address         common.Address
+	Topic           common.Hash
 	BalanceMetaData interface{}
 }
 
@@ -312,7 +312,7 @@ func init() {
 		fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
 	}
 
-	go StartOrderBookAggregatorService()
+	go startOrderBookAggregatorService()
 
 }
 
@@ -352,7 +352,7 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 	for pool := range pools {
 		// log.Info("curveWorker count (start)", "count", curveWg.Count(), "pool", pool)
 		// Fetch balance metadata for the Curve pool
-		balanceMetaData, err := GetBalanceMetaData_Curve(pool)
+		balanceMetaData, err := getBalanceMetaData_Curve(pool)
 		if err != nil {
 			// Handle error, perhaps log it
 			fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
@@ -397,28 +397,28 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 		var err error
 		switch topicExchangeName {
 		case exchangeName_ERC20:
-			balanceMetaData, err = GetBalanceMetaData_ERC20(address, eventLog)
+			balanceMetaData, err = getBalanceMetaData_ERC20(address, eventLog)
 		case exchangeName_UniswapV2:
 			// log.Info("found UniswapV2 log...", "pool", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_UniswapV2(address.Hex())
 			// log.Info("finished UniswapV2 log", "pool", address.Hex())
 		case exchangeName_UniswapV3:
 			// log.Info("found UniswapV3 log...", "pool", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_UniswapV3(address.Hex())
 			// log.Info("finished UniswapV3 log", "pool", address.Hex())
 		case exchangeName_BalancerV2:
 			poolId := eventLog.Topics[1]
 			// log.Info("found BalancerV2 log...", "poolId", poolId.Hex())
-			balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+			balanceMetaData, address, err = getBalanceMetaData_BalancerV2(poolId)
 			// log.Info("finished BalancerV2 log", "poolId", poolId.Hex())
 		case exchangeName_OneInchV2:
 			// log.Info("found OneInchV2 log...", "address", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_OneInchV2(address.Hex())
 			AddPoolToActiveOneInchV2DecayPeriods(address, currentBlockNumber)
 			// log.Info("finished OneInchV2 log", "address", address.Hex())
 		case exchangeName_orderBooks:
 			// log.Info("found ZrxOrderBook log...", "pool", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_OrderBooks(address, eventLog)
+			balanceMetaData, err = getBalanceMetaData_OrderBooks(address, eventLog)
 		default:
 			// log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
 		}
@@ -451,7 +451,7 @@ func oneInchWorker(id int, pools <-chan common.Address, results chan<- PoolBalan
 		balanceMetaData := interface{}(nil)
 		// Process the pool
 		// Example: Fetching pool data (placeholder logic)
-		balanceMetaData, err = GetBalanceMetaData_OneInchV2(poolAddress.Hex())
+		balanceMetaData, err = getBalanceMetaData_OneInchV2(poolAddress.Hex())
 		if err != nil {
 			log.Error("NewHeads: error getting balanceMetaData on OneinchV2: ", "address:", poolAddress.Hex(), "error", err)
 		}
@@ -534,7 +534,9 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				for i := 0; i < len(logs); i++ {
 					select {
 					case result := <-results:
-						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+						if result.BalanceMetaData != nil {
+							newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+						}
 					case <-time.After(200 * time.Millisecond):
 						log.Error("Timeout waiting for result from logWorker")
 					}

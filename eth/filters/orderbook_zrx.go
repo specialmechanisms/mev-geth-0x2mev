@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+
 	// "time"
+	"strconv"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"strconv"
 )
 
 // TODO nick clean up the file
@@ -424,14 +426,14 @@ func ConvertZRXOrderToMap(order Order) map[string]interface{} {
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
-func GetBalanceMetaData_Zrx(contractAddress common.Address, eventLog *Log) (ZRXOrderInfo, error) {
+func getBalanceMetaData_Zrx(eventLog *Log) (ZRXOrderInfo, error) {
 	// get the order hash from the event log
 	orderHash := common.BytesToHash(eventLog.Data[0:32])
 
 	// get the offChain data from orderDataStore
 	order, ok := orderDataStore[orderHash.Hex()]
 	if !ok {
-		log.Println("GetBalanceMetaData_Zrx: order not found in orderDataStore")
+		log.Println("getBalanceMetaData_Zrx: order not found in orderDataStore")
 		return ZRXOrderInfo{}, fmt.Errorf("failed to get order from orderDataStore")
 	}
 	// do the OrderInfo call

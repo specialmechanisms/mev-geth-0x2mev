@@ -186,7 +186,7 @@ func isDivisionByZeroError(err error) bool {
 	return strings.Contains(err.Error(), "SafeMath: division by zero")
 }
 
-func GetBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error) {
+func getBalanceMetaData_OneInchV2(poolAddress string) (MetaData_OneInchV2, error) {
 	var metaData MetaData_OneInchV2
 
 	instance_OneInchV2_Mooniswap_Pool := bind.NewBoundContract(common.HexToAddress(poolAddress), parsedABI_OneInchV2_Mooniswap_Pool, client, client, client)
@@ -320,7 +320,7 @@ type MetaData_BalancerV2 struct {
 	ScalingFactors []*big.Int
 }
 
-func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, common.Address, error) {
+func getBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, common.Address, error) {
 	// the event gets fired on the vault contract and not on the pool.
 	// we will get the poolAddress from the poolId and return the poolAddress the address of PoolBalanceMetaData struct outside this function can get updated
 	var metaData MetaData_BalancerV2
@@ -344,7 +344,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	callOpts := &bind.CallOpts{}
 	err := instance_balancerv2_vault.Call(callOpts, &tokensAndBalances, "getPoolTokens", poolId)
 	if err != nil {
-		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
+		log.Info("getBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 		return metaData, poolAddress, err
 	}
 	addresses := tokensAndBalances[0].([]common.Address)
@@ -365,7 +365,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 	var poolFee []interface{}
 	err = instance_balancerv2_weightedPool.Call(callOpts, &poolFee, "getSwapFeePercentage")
 	if err != nil {
-		log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
+		log.Info("getBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 		return metaData, poolAddress, err
 	}
 	fee_bigInt := poolFee[0].(*big.Int)
@@ -386,7 +386,7 @@ func GetBalanceMetaData_BalancerV2(poolId common.Hash) (MetaData_BalancerV2, com
 			metaData.ScalingFactors = nil // Explicitly set ScalingFactors to nil
 		} else {
 			// An unexpected error occurred.
-			log.Info("GetBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
+			log.Info("getBalanceMetaData_BalancerV2: Failed to retrieve value of variable:", "err", err)
 			return metaData, poolAddress, err
 		}
 	} else {
@@ -426,7 +426,7 @@ type ResponseStruct_UniswapV3Multicall struct {
 	Ticks        []Ticks  `json:"ticks"`
 }
 
-func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3Multicall, error) {
+func getBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3Multicall, error) {
 	var metaData ResponseStruct_UniswapV3Multicall
 
 	// The response_factoryCall is a pointer to a common.Address that will store the address returned by the factory function of the UniswapV3 pool contract.
@@ -473,7 +473,7 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	getNAdjacentTickWordsInBothDirections := uint16(20)
 	err = instance_multicall.Call(callOpts, &response, "getExchangePriceInputData", poolAddressConverted, getNAdjacentTickWordsInBothDirections)
 	if err != nil {
-		log.Info("GetBalanceMetaData_UniswapV3: Failed to retrieve value of variable:", err)
+		log.Info("getBalanceMetaData_UniswapV3: Failed to retrieve value of variable:", err)
 		return metaData, err
 	}
 
@@ -486,14 +486,14 @@ func GetBalanceMetaData_UniswapV3(poolAddress string) (ResponseStruct_UniswapV3M
 	var contractResponse ContractResponse
 	bytes, err := json.Marshal(response[0])
 	if err != nil {
-		log.Info("GetBalanceMetaData_UniswapV3: failed to marshal response[0]:", err)
+		log.Info("getBalanceMetaData_UniswapV3: failed to marshal response[0]:", err)
 		return metaData, err
 	}
 
 	// Unmarshal the JSON bytes into a ContractResponse struct
 	err = json.Unmarshal(bytes, &contractResponse)
 	if err != nil {
-		log.Info("GetBalanceMetaData_UniswapV3: failed to unmarshal into ContractResponse:", err)
+		log.Info("getBalanceMetaData_UniswapV3: failed to unmarshal into ContractResponse:", err)
 		return metaData, err
 	}
 
@@ -523,7 +523,7 @@ type MetaData_CurveV2 struct {
 	D            *big.Int
 }
 
-func GetBalanceMetaData_Curve(poolAddress string) (interface{}, error) {
+func getBalanceMetaData_Curve(poolAddress string) (interface{}, error) {
 	// find out the pool type
 	poolType, err := GetPoolType_Curve(poolAddress)
 	if err != nil {
@@ -534,19 +534,19 @@ func GetBalanceMetaData_Curve(poolAddress string) (interface{}, error) {
 	case "v1":
 		return GetPoolBalancesWei_Curve(poolAddress)
 	case "v2":
-		return GetBalanceMetaData_v2_Curve(poolAddress)
+		return getBalanceMetaData_v2_Curve(poolAddress)
 	case "v2_2Tokens":
-		return GetBalanceMetaData_v2_2Tokens_Curve(poolAddress)
+		return getBalanceMetaData_v2_2Tokens_Curve(poolAddress)
 	case "metaEth":
 		return GetPoolBalancesWei_Curve(poolAddress)
 	case "metaStable":
-		return GetBalanceMetaData_metaStable_Curve(poolAddress)
+		return getBalanceMetaData_metaStable_Curve(poolAddress)
 	default:
 		return nil, fmt.Errorf("pool type not found for curve pool: %s", poolAddress)
 	}
 }
 
-func GetBalanceMetaData_v2_Curve(poolAddress string) (*MetaData_CurveV2, error) {
+func getBalanceMetaData_v2_Curve(poolAddress string) (*MetaData_CurveV2, error) {
 	balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
 	if err != nil {
 		return nil, err
@@ -577,7 +577,7 @@ type MetaData_CurveV2_2Tokens struct {
 	D            *big.Int
 }
 
-func GetBalanceMetaData_v2_2Tokens_Curve(poolAddress string) (*MetaData_CurveV2_2Tokens, error) {
+func getBalanceMetaData_v2_2Tokens_Curve(poolAddress string) (*MetaData_CurveV2_2Tokens, error) {
 	balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
 	if err != nil {
 		return nil, err
@@ -608,7 +608,7 @@ type MetaData_CurveV2_MetaStable struct {
 	LPTokenSupply_BasePool *big.Int
 }
 
-func GetBalanceMetaData_metaStable_Curve(poolAddress string) (*MetaData_CurveV2_MetaStable, error) {
+func getBalanceMetaData_metaStable_Curve(poolAddress string) (*MetaData_CurveV2_MetaStable, error) {
 	basePoolAddress, err := GetBasePoolAddress_MetaStable_Curve(poolAddress)
 	if err != nil {
 		return nil, err
@@ -844,7 +844,7 @@ func GetAllPools_Curve() ([]string, error) {
 // END CURVE
 
 // TODO nick-smc i think i need to improve logging here
-func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
+func getBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 	var metaData []float64
 
 	var contractAddress common.Address = common.HexToAddress(poolAddress)

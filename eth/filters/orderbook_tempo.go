@@ -13,10 +13,11 @@ package filters
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"log"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -91,10 +92,10 @@ type TempoData struct {
 	Nonce                 *big.Int
 }
 
-// TempoDecodeOrderDataInt decodes the order data from a big.Int into a TempoData struct.
+// tempoDecodeOrderDataInt decodes the order data from a big.Int into a TempoData struct.
 // The data is encoded in a specific format where each field is packed into specific bits of the big.Int.
 // This function extracts each field using bitwise operations.
-func TempoDecodeOrderDataInt(data *big.Int) (TempoData, error) {
+func tempoDecodeOrderDataInt(data *big.Int) (TempoData, error) {
 	var tempoData TempoData
 
 	// Extract the 'begin' field (first 64 bits)
@@ -125,21 +126,21 @@ func (o TempoOffChainData_SignedOrder) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func TempoConvertOrderToTempoOrder(order Order) (TempoOrder, error) {
-	tempoOrderRaw, err := TempoConvertOrderToTempoOrderRaw(order)
+func tempoConvertOrderToTempoOrder(order Order) (TempoOrder, error) {
+	tempoOrderRaw, err := tempoConvertOrderToTempoOrderRaw(order)
 	if err != nil {
 		return TempoOrder{}, fmt.Errorf(
-			"TempoConvertOrderToTempoOrder: failed to convert order to TempoOrderRaw: %v", err)
+			"tempoConvertOrderToTempoOrder: failed to convert order to TempoOrderRaw: %v", err)
 	}
-	tempoOrder, err := TempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw)
+	tempoOrder, err := tempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw)
 	if err != nil {
 		return TempoOrder{}, fmt.Errorf(
-			"TempoConvertOrderToTempoOrder: failed to convert TempoOrderRaw to TempoOrder: %v", err)
+			"tempoConvertOrderToTempoOrder: failed to convert TempoOrderRaw to TempoOrder: %v", err)
 	}
 	return tempoOrder, nil
 }
 
-func TempoConvertOrderToTempoOrderRaw(order Order) (TempoOrderRaw, error) {
+func tempoConvertOrderToTempoOrderRaw(order Order) (TempoOrderRaw, error) {
 	var tempoOrderRaw TempoOrderRaw
 
 	// convert the order to TempoOrderRaw
@@ -162,18 +163,18 @@ func TempoConvertOrderToTempoOrderRaw(order Order) (TempoOrderRaw, error) {
 	}
 	tempoOrderRaw.OffChainData = offChainData
 
-	log.Printf("TempoConvertOrderToTempoOrderRaw: Successfully converted offChainData: %+v", offChainData)
+	log.Printf("tempoConvertOrderToTempoOrderRaw: Successfully converted offChainData: %+v", offChainData)
 	return tempoOrderRaw, nil
 }
 
-func TempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw TempoOrderRaw) (TempoOrder, error) {
+func tempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw TempoOrderRaw) (TempoOrder, error) {
 	var tempoOrder TempoOrder
 
 	// convert the order to TempoOrder
 	tempoOrder.Order = tempoOrderRaw.Order
 
 	// convert the offChainData to TempoOffChainData_SignedOrder
-	offChainData, err := CreateTempoOffChainData(tempoOrderRaw.OffChainData)
+	offChainData, err := tempoCreateOffChainData(tempoOrderRaw.OffChainData)
 	if err != nil {
 		return tempoOrder, fmt.Errorf("failed to convert offChainData to TempoOffChainData_SignedOrder: %v", err)
 	}
@@ -182,7 +183,7 @@ func TempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw TempoOrderRaw) (TempoOr
 	return tempoOrder, nil
 }
 
-func CreateTempoOffChainData(tempoOffChainDataRaw TempoOffChainDataRaw) (TempoOffChainData_SignedOrder, error) {
+func tempoCreateOffChainData(tempoOffChainDataRaw TempoOffChainDataRaw) (TempoOffChainData_SignedOrder, error) {
 	var tempoOffChainData TempoOffChainData_SignedOrder
 
 	// Helper function to convert string to *big.Int
@@ -215,7 +216,7 @@ func CreateTempoOffChainData(tempoOffChainDataRaw TempoOffChainDataRaw) (TempoOf
 	return tempoOffChainData, nil
 }
 
-func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
+func tempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 	var onChainData OnChainData
 
 	// at this point we do only have the offchain data. we need to fetch the onchain data from the blockchain
@@ -228,7 +229,7 @@ func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 	}
 
 	// check if it is a permit2 order
-	decodedDataInt, err := TempoDecodeOrderDataInt(tempoOrder.OffChainData.Order.Data)
+	decodedDataInt, err := tempoDecodeOrderDataInt(tempoOrder.OffChainData.Order.Data)
 	if err != nil {
 		return onChainData, fmt.Errorf("failed to decode order data: %v", err)
 	}
@@ -248,7 +249,7 @@ func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 	}
 
 	// get the order info
-	onChainData.OrderInfo, err = TempoGetOrderInfo(tempoOrder)
+	onChainData.OrderInfo, err = tempoGetOrderInfo(tempoOrder)
 	if err != nil {
 		return onChainData, fmt.Errorf("failed to get order info: %v", err)
 	}
@@ -257,9 +258,9 @@ func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 
 }
 
-func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
-	log.Println("TempoGetOrderInfo: tempoOrder: ", tempoOrder)
-	log.Println("TempoGetOrderInfo: orderHash: ", tempoOrder.Order.OrderHash)
+func tempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
+	log.Println("tempoGetOrderInfo: tempoOrder: ", tempoOrder)
+	log.Println("tempoGetOrderInfo: orderHash: ", tempoOrder.Order.OrderHash)
 
 	var orderInfoResponse []interface{}
 
@@ -285,28 +286,28 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 	// DEBUG BLOCK TODO nick remove this whole block after you tested on live
 	// lets decode the data and print the values
 	// Log the entire tempoOrder structure
-	log.Println("TempoGetOrderInfo: tempoOrder: ", tempoOrder)
+	log.Println("tempoGetOrderInfo: tempoOrder: ", tempoOrder)
 	// Log the OffChainData
-	log.Println("TempoGetOrderInfo: tempoOrder.OffChainData: ", tempoOrder.OffChainData)
+	log.Println("tempoGetOrderInfo: tempoOrder.OffChainData: ", tempoOrder.OffChainData)
 	// Log the Order
-	log.Println("TempoGetOrderInfo: tempoOrder.OffChainData.Order: ", tempoOrder.OffChainData.Order)
+	log.Println("tempoGetOrderInfo: tempoOrder.OffChainData.Order: ", tempoOrder.OffChainData.Order)
 	// Log the Data field
-	log.Println("TempoGetOrderInfo: tempoOrder.OffChainData.Order.Data: ", tempoOrder.OffChainData.Order.Data)
-	decodedData, err := TempoDecodeOrderDataInt(tempoOrder.OffChainData.Order.Data)
+	log.Println("tempoGetOrderInfo: tempoOrder.OffChainData.Order.Data: ", tempoOrder.OffChainData.Order.Data)
+	decodedData, err := tempoDecodeOrderDataInt(tempoOrder.OffChainData.Order.Data)
 	if err != nil {
-		log.Println("TempoGetOrderInfo: failed to decode order data: ", err)
+		log.Println("tempoGetOrderInfo: failed to decode order data: ", err)
 		return TempoOrderInfo{}, err
 	}
-	log.Println("TempoGetOrderInfo: decodedData: ", decodedData)
+	log.Println("tempoGetOrderInfo: decodedData: ", decodedData)
 
 	// Call the getOrderStatus function on the contract
 	callOpts := &bind.CallOpts{}
 	err = instance_tempoContract.Call(callOpts, &orderInfoResponse, "getOrderStatus", inputParameters)
 	if err != nil {
-		log.Println("TempoGetOrderInfo: failed to get order info: ", err)
+		log.Println("tempoGetOrderInfo: failed to get order info: ", err)
 		return TempoOrderInfo{}, err
 	}
-	log.Println("TempoGetOrderInfo: orderInfoResponse", orderInfoResponse)
+	log.Println("tempoGetOrderInfo: orderInfoResponse", orderInfoResponse)
 
 	// Assert the response to the expected struct
 	orderInfo := orderInfoResponse[0].(struct {
@@ -320,7 +321,7 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 	log.Println("tempoOrder.Order.OrderHash", tempoOrder.Order.OrderHash)
 	log.Println("orderInfo.OrderHash", common.BytesToHash(orderInfo.OrderHash[:]).Hex())
 	if tempoOrder.Order.OrderHash != common.BytesToHash(orderInfo.OrderHash[:]).Hex() {
-		log.Println("TempoGetOrderInfo: orderHash does not match. This can happen while testing," +
+		log.Println("tempoGetOrderInfo: orderHash does not match. This can happen while testing," +
 			"because the order was created in local env but we are querying the blockchain")
 	}
 
@@ -332,20 +333,20 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
-func GetBalanceMetaData_Tempo(contractAddress common.Address, eventLog *Log) (TempoOrderInfo, error) {
+func getBalanceMetaData_Tempo(eventLog *Log) (TempoOrderInfo, error) {
 	orderHash := common.BytesToHash(eventLog.Data[0:32])
 
 	// get the offChain data from orderDataStore
 	order, ok := orderDataStore[orderHash.Hex()]
 	if !ok {
-		log.Println("GetBalanceMetaData_ZrxOrderBook: order not found in orderDataStore")
+		log.Println("getBalanceMetaData_ZrxOrderBook: order not found in orderDataStore")
 		return TempoOrderInfo{}, fmt.Errorf("failed to get order from orderDataStore")
 	}
 
 	// Check if OffChainData is of the expected type
 	offChainData, ok := order.OffChainData.(TempoOffChainData_SignedOrder)
 	if !ok {
-		log.Println("GetBalanceMetaData_TempoOrderBook: OffChainData is not of type TempoOffChainData_SignedOrder")
+		log.Println("getBalanceMetaData_TempoOrderBook: OffChainData is not of type TempoOffChainData_SignedOrder")
 		return TempoOrderInfo{}, fmt.Errorf("OffChainData is not of type TempoOffChainData_SignedOrder")
 	}
 
@@ -354,5 +355,5 @@ func GetBalanceMetaData_Tempo(contractAddress common.Address, eventLog *Log) (Te
 		Order:        order,
 		OffChainData: offChainData,
 	}
-	return TempoGetOrderInfo(tempoOrder)
+	return tempoGetOrderInfo(tempoOrder)
 }
