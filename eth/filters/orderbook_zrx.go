@@ -14,7 +14,8 @@ import (
 // TODO nick clean up the file
 
 var (
-	ORDERBOOKNAME_ZRX = "zrx"
+	ORDERBOOKNAME_ZRX    = "zrx"
+	ORDERBOOKADDRESS_ZRX = common.HexToAddress("0xDef1C0ded9bec7F1a1670819833240f027b25EfF")
 )
 
 type ZRXOrder struct {
@@ -80,21 +81,21 @@ type ZRXMetaData struct {
 
 // TODO nick-0x make those strings into common.Address
 type ZRXOrderDetails struct {
-	Signature           ZRXSignature `json:"signature"`
-	Sender              string       `json:"sender"`
-	Maker               string       `json:"maker"`
-	Taker               string       `json:"taker"`
-	TakerTokenFeeAmount *big.Int     `json:"takerTokenFeeAmount"`
-	MakerAmount         *big.Int     `json:"makerAmount"`
-	TakerAmount         *big.Int     `json:"takerAmount"`
-	MakerToken          string       `json:"makerToken"`
-	TakerToken          string       `json:"takerToken"`
-	Salt                *big.Int     `json:"salt"`
-	VerifyingContract   string       `json:"verifyingContract"`
-	FeeRecipient        string       `json:"feeRecipient"`
-	Expiry              uint64       `json:"expiry"`
-	ChainID             int          `json:"chainId"`
-	Pool                [32]byte     `json:"pool"`
+	Signature           ZRXSignature   `json:"signature"`
+	Sender              common.Address `json:"sender"`
+	Maker               common.Address `json:"maker"`
+	Taker               common.Address `json:"taker"`
+	TakerTokenFeeAmount *big.Int       `json:"takerTokenFeeAmount"`
+	MakerAmount         *big.Int       `json:"makerAmount"`
+	TakerAmount         *big.Int       `json:"takerAmount"`
+	MakerToken          common.Address `json:"makerToken"`
+	TakerToken          common.Address `json:"takerToken"`
+	Salt                *big.Int       `json:"salt"`
+	VerifyingContract   common.Address `json:"verifyingContract"`
+	FeeRecipient        common.Address `json:"feeRecipient"`
+	Expiry              uint64         `json:"expiry"`
+	ChainID             int            `json:"chainId"`
+	Pool                [32]byte       `json:"pool"`
 }
 
 type ZRXOnChainData struct {
@@ -181,9 +182,6 @@ func (o *ZRXOrderInfo) UnmarshalJSON(data []byte) error {
 }
 
 func CreateZRXOffChainData(rawData ZRXOffChainDataRaw) (ZRXOffChainData, error) {
-	log.Println("CreateZRXOffChainData: rawData", rawData)
-	log.Println("CreateZRXOffChainData: rawData.Order", rawData.Order)
-	log.Println("CreateZRXOffChainData: rawData.Order.TakerTokenFeeAmount", rawData.Order.TakerTokenFeeAmount)
 	takerTokenFeeAmount, ok := new(big.Int).SetString(rawData.Order.TakerTokenFeeAmount, 10)
 	if !ok {
 		return ZRXOffChainData{}, fmt.Errorf("failed to convert TakerTokenFeeAmount")
@@ -219,17 +217,17 @@ func CreateZRXOffChainData(rawData ZRXOffChainDataRaw) (ZRXOffChainData, error) 
 	return ZRXOffChainData{
 		Order: ZRXOrderDetails{
 			Signature:           signature,
-			Sender:              rawData.Order.Sender,
-			Maker:               rawData.Order.Maker,
-			Taker:               rawData.Order.Taker,
+			Sender:              common.HexToAddress(rawData.Order.Sender),
+			Maker:               common.HexToAddress(rawData.Order.Maker),
+			Taker:               common.HexToAddress(rawData.Order.Taker),
 			TakerTokenFeeAmount: takerTokenFeeAmount,
 			MakerAmount:         makerAmount,
 			TakerAmount:         takerAmount,
-			MakerToken:          rawData.Order.MakerToken,
-			TakerToken:          rawData.Order.TakerToken,
+			MakerToken:          common.HexToAddress(rawData.Order.MakerToken),
+			TakerToken:          common.HexToAddress(rawData.Order.TakerToken),
 			Salt:                salt,
-			VerifyingContract:   rawData.Order.VerifyingContract,
-			FeeRecipient:        rawData.Order.FeeRecipient,
+			VerifyingContract:   common.HexToAddress(rawData.Order.VerifyingContract),
+			FeeRecipient:        common.HexToAddress(rawData.Order.FeeRecipient),
 			Expiry:              expiry,
 			ChainID:             chainID,
 			Pool:                pool,
@@ -281,7 +279,6 @@ func ZRXConvertOrderToZRXOrderRaw(order Order) (ZRXOrderRaw, error) {
 	zrxOrderRaw.Order = order
 
 	// Attempt to assert OffChainData to ZRXOffChainDataRaw
-	log.Println("ZRXConvertOrderToZRXOrderRaw: order.OffChainData", order.OffChainData)
 	offChainData, ok := order.OffChainData.(ZRXOffChainDataRaw)
 	if !ok {
 		// Attempt to manually unmarshal OffChainData
@@ -336,17 +333,17 @@ func ZRXGetOnChainData(order ZRXOrder) (OnChainData, error) {
 	var onChainData OnChainData
 
 	makerBalance_weiUnits, err := GetERC20TokenBalance(
-		common.HexToAddress(order.OffChainData.Order.Maker),
-		common.HexToAddress(order.OffChainData.Order.MakerToken))
+		order.OffChainData.Order.Maker,
+		order.OffChainData.Order.MakerToken)
 	if err != nil {
 		return onChainData, fmt.Errorf("failed to get maker balance: %v", err)
 	}
 	onChainData.MakerBalance_weiUnits = makerBalance_weiUnits
 
 	makerAllowance_weiUnits, err := GetERC20TokenAllowance(
-		common.HexToAddress(order.OffChainData.Order.MakerToken),
-		common.HexToAddress(order.OffChainData.Order.Maker),
-		common.HexToAddress(order.OffChainData.Order.VerifyingContract))
+		order.OffChainData.Order.MakerToken,
+		order.OffChainData.Order.Maker,
+		order.OffChainData.Order.VerifyingContract)
 	if err != nil {
 		return onChainData, fmt.Errorf("failed to get maker allowance: %v", err)
 	}
@@ -367,7 +364,7 @@ func ZRXGetOrderInfo(order ZRXOrder) (ZRXOrderInfo, error) {
 
 	// get the verifying contract which is inside of ZRXOrderDetails
 	var orderInfoResponse []interface{}
-	var contractAddress common.Address = common.HexToAddress(order.OffChainData.Order.VerifyingContract)
+	var contractAddress common.Address = order.OffChainData.Order.VerifyingContract
 	instance_zrxExchangeProxy := bind.NewBoundContract(contractAddress, parsedABI_ZRXV4, client, client, client)
 
 	// Define the input parameters as a struct
@@ -385,15 +382,15 @@ func ZRXGetOrderInfo(order ZRXOrder) (ZRXOrderInfo, error) {
 		Expiry              uint64
 		Salt                *big.Int
 	}{
-		MakerToken:          common.HexToAddress(order.OffChainData.Order.MakerToken),
-		TakerToken:          common.HexToAddress(order.OffChainData.Order.TakerToken),
+		MakerToken:          order.OffChainData.Order.MakerToken,
+		TakerToken:          order.OffChainData.Order.TakerToken,
 		MakerAmount:         order.OffChainData.Order.MakerAmount,
 		TakerAmount:         order.OffChainData.Order.TakerAmount,
 		TakerTokenFeeAmount: order.OffChainData.Order.TakerTokenFeeAmount,
-		Maker:               common.HexToAddress(order.OffChainData.Order.Maker),
-		Taker:               common.HexToAddress(order.OffChainData.Order.Taker),
-		Sender:              common.HexToAddress(order.OffChainData.Order.Sender),
-		FeeRecipient:        common.HexToAddress(order.OffChainData.Order.FeeRecipient),
+		Maker:               order.OffChainData.Order.Maker,
+		Taker:               order.OffChainData.Order.Taker,
+		Sender:              order.OffChainData.Order.Sender,
+		FeeRecipient:        order.OffChainData.Order.FeeRecipient,
 		Pool:                order.OffChainData.Order.Pool,
 		Expiry:              order.OffChainData.Order.Expiry,
 		Salt:                order.OffChainData.Order.Salt,
@@ -444,15 +441,14 @@ func ConvertZRXOrderToMap(order Order) map[string]interface{} {
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
-func GetBalanceMetaData_ZrxOrderBook(contractAddress common.Address, eventLog *Log) (ZRXOrderInfo, error) {
+func GetBalanceMetaData_Zrx(contractAddress common.Address, eventLog *Log) (ZRXOrderInfo, error) {
 	// get the order hash from the event log
 	orderHash := common.BytesToHash(eventLog.Data[0:32])
-	log.Println("GetBalanceMetaData_ZrxOrderBook: orderHash", orderHash)
 
 	// get the offChain data from orderDataStore
 	order, ok := orderDataStore[orderHash.Hex()]
 	if !ok {
-		log.Println("GetBalanceMetaData_ZrxOrderBook: order not found in orderDataStore")
+		log.Println("GetBalanceMetaData_Zrx: order not found in orderDataStore")
 		return ZRXOrderInfo{}, fmt.Errorf("failed to get order from orderDataStore")
 	}
 	// do the OrderInfo call

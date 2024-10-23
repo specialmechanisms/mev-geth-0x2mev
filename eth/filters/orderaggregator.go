@@ -103,7 +103,6 @@ func updateOrdersOnchainData(orderHash string) {
 
 	// Handle missing or empty fields
 	if order.OnChainData.MakerAllowance_weiUnits == nil || order.OnChainData.MakerBalance_weiUnits == nil || order.OnChainData.OrderInfo == nil {
-		log.Println("updateOrdersOnchainData: order.OrderBookName", order.OrderBookName)
 		switch order.OrderBookName {
 		case ORDERBOOKNAME_ZRX:
 			zrxOrder, err := ZRXConvertOrderToZRXOrder(order)
@@ -372,5 +371,17 @@ func WaitForHTTPServerToStart() {
 			break
 		}
 		time.Sleep(5 * time.Second)
+	}
+}
+
+func GetBalanceMetaData_OrderBooks(address common.Address, eventLog *Log) (interface{}, error) {
+	switch address {
+	case ORDERBOOKADDRESS_ZRX:
+		return GetBalanceMetaData_Zrx(address, eventLog)
+	case ORDERBOOKADDRESS_TEMPO:
+		return GetBalanceMetaData_Tempo(address, eventLog)
+	// Add cases for other order books here
+	default:
+		return "", fmt.Errorf("address not implemented in GetBalanceMetaData_OrderBook: %s", address.Hex())
 	}
 }

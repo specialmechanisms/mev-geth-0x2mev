@@ -21,10 +21,8 @@ import (
 
 var (
 	ORDERBOOKNAME_TEMPO = "tempo"
+	ORDERBOOKADDRESS_TEMPO = common.HexToAddress("0x93be362993d5B3954dbFdA49A1Ad1844c8083A30")
 )
-
-// list of Tempo contract addresses
-var TEMPO_CONTRACT = common.HexToAddress("0x93be362993d5B3954dbFdA49A1Ad1844c8083A30")
 
 type TempoOrder struct {
 	Order
@@ -120,19 +118,16 @@ func (o TempoOffChainData_SignedOrder) MarshalJSON() ([]byte, error) {
 }
 
 func TempoConvertOrderToTempoOrder(order Order) (TempoOrder, error) {
-	log.Println("TempoConvertOrderToTempoOrder: order: ", order)
 	tempoOrderRaw, err := TempoConvertOrderToTempoOrderRaw(order)
 	if err != nil {
 		return TempoOrder{}, fmt.Errorf(
 			"TempoConvertOrderToTempoOrder: failed to convert order to TempoOrderRaw: %v", err)
 	}
-	log.Println("TempoConvertOrderToTempoOrder: tempoOrderRaw: ", tempoOrderRaw)
 	tempoOrder, err := TempoConvertTempoOrderRawToTempoOrder(tempoOrderRaw)
 	if err != nil {
 		return TempoOrder{}, fmt.Errorf(
 			"TempoConvertOrderToTempoOrder: failed to convert TempoOrderRaw to TempoOrder: %v", err)
 	}
-	log.Println("TempoConvertOrderToTempoOrder: tempoOrder: ", tempoOrder)
 	return tempoOrder, nil
 }
 
@@ -142,8 +137,6 @@ func TempoConvertOrderToTempoOrderRaw(order Order) (TempoOrderRaw, error) {
 	// convert the order to TempoOrderRaw
 	tempoOrderRaw.Order = order
 
-	log.Println("TempoConvertOrderToTempoOrderRaw: order: ", order)
-	log.Println("TempoConvertOrderToTempoOrderRaw: offChainData: ", order.OffChainData)
 	// convert the offChainData to TempoOffChainDataRaw
 	offChainData, ok := order.OffChainData.(TempoOffChainDataRaw)
 	if !ok {
@@ -238,10 +231,9 @@ func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 		// log an error to integrate this part
 		log.Fatalln("permit2 allowance check not implemented yet")
 	} else {
-		log.Println("no permit2 order found")
 		// get the maker allowance set in the maker token contract
 		onChainData.MakerAllowance_weiUnits, err = GetERC20TokenAllowance(
-			tempoOrder.OffChainData.Order.MakerToken, tempoOrder.OffChainData.Order.Maker, TEMPO_CONTRACT)
+			tempoOrder.OffChainData.Order.MakerToken, tempoOrder.OffChainData.Order.Maker, ORDERBOOKADDRESS_TEMPO)
 		if err != nil {
 			return onChainData, fmt.Errorf("failed to get maker allowance: %v", err)
 		}
@@ -263,106 +255,8 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 
 	var orderInfoResponse []interface{}
 
-	instance_tempoContract := bind.NewBoundContract(TEMPO_CONTRACT, parsedABI_Tempo, client, client, client)
+	instance_tempoContract := bind.NewBoundContract(ORDERBOOKADDRESS_TEMPO, parsedABI_Tempo, client, client, client)
 
-	log.Println("TempoGetOrderInfo: contractAddress", TEMPO_CONTRACT)
-
-	// TODO nick-0x remove that again if the call works
-	// {
-	//     "inputs": [
-	//         {
-	//             "components": [
-	//                 {
-	//                     "components": [
-	//                         {
-	//                             "internalType": "address",
-	//                             "name": "maker",
-	//                             "type": "address"
-	//                         },
-	//                         {
-	//                             "internalType": "address",
-	//                             "name": "makerToken",
-	//                             "type": "address"
-	//                         },
-	//                         {
-	//                             "internalType": "uint256",
-	//                             "name": "makerAmount",
-	//                             "type": "uint256"
-	//                         },
-	//                         {
-	//                             "internalType": "address",
-	//                             "name": "takerTokenRecipient",
-	//                             "type": "address"
-	//                         },
-	//                         {
-	//                             "internalType": "address",
-	//                             "name": "takerToken",
-	//                             "type": "address"
-	//                         },
-	//                         {
-	//                             "internalType": "uint256",
-	//                             "name": "takerAmountMin",
-	//                             "type": "uint256"
-	//                         },
-	//                         {
-	//                             "internalType": "uint256",
-	//                             "name": "takerAmountDecayRate",
-	//                             "type": "uint256"
-	//                         },
-	//                         {
-	//                             "internalType": "uint256",
-	//                             "name": "data",
-	//                             "type": "uint256"
-	//                         }
-	//                     ],
-	//                     "internalType": "struct Order",
-	//                     "name": "order",
-	//                     "type": "tuple"
-	//                 },
-	//                 {
-	//                     "internalType": "bytes",
-	//                     "name": "signature",
-	//                     "type": "bytes"
-	//                 }
-	//             ],
-	//             "internalType": "struct SignedOrder",
-	//             "name": "order",
-	//             "type": "tuple"
-	//         }
-	//     ],
-	//     "name": "getOrderStatus",
-	//     "outputs": [
-	//         {
-	//             "components": [
-	//                 {
-	//                     "internalType": "bytes32",
-	//                     "name": "orderHash",
-	//                     "type": "bytes32"
-	//                 },
-	//                 {
-	//                     "internalType": "enum OrderUtils.OrderStatus",
-	//                     "name": "status",
-	//                     "type": "uint8"
-	//                 },
-	//                 {
-	//                     "internalType": "uint256",
-	//                     "name": "makerAmountFilled",
-	//                     "type": "uint256"
-	//                 },
-	//                 {
-	//                     "internalType": "uint256",
-	//                     "name": "makerAmountFillable",
-	//                     "type": "uint256"
-	//                 }
-	//             ],
-	//             "internalType": "struct OrderUtils.OrderInfo",
-	//             "name": "orderInfo",
-	//             "type": "tuple"
-	//         }
-	//     ],
-	//     "stateMutability": "view",
-	//     "type": "function"
-	// }
 
 	inputParameters := &struct {
 		Order     TempoOffChainDataOrder `json:"order"`
@@ -381,6 +275,7 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 		Signature: tempoOrder.OffChainData.Signature,
 	}
 
+	// DEBUG BLOCK TODO nick remove this whole block after you tested on live
 	// lets decode the data and print the values
 	// Log the entire tempoOrder structure
 	log.Println("TempoGetOrderInfo: tempoOrder: ", tempoOrder)
@@ -429,9 +324,8 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 	}, nil
 }
 
-func GetBalanceMetaData_TempoOrderBook(contractAddress common.Address, eventLog *Log) (TempoOrderInfo, error) {
+func GetBalanceMetaData_Tempo(contractAddress common.Address, eventLog *Log) (TempoOrderInfo, error) {
 	orderHash := common.BytesToHash(eventLog.Data[0:32])
-	log.Println("GetBalanceMetaData_TempoOrderBook: orderHash: ", orderHash)
 
 	// get the offChain data from orderDataStore
 	order, ok := orderDataStore[orderHash.Hex()]
