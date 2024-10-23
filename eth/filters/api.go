@@ -224,10 +224,9 @@ func (api *FilterAPI) NewBlockFilter() rpc.ID {
 }
 
 type PoolBalanceMetaData struct {
-	ExchangeName string
-	Address      common.Address
-	Topic        common.Hash
-	// TODO nick-smc not sure about the type here yet
+	ExchangeName    string
+	Address         common.Address
+	Topic           common.Hash
 	BalanceMetaData interface{}
 }
 
@@ -236,21 +235,24 @@ type NewHeadsWithPoolBalanceMetaData struct {
 	PoolBalanceMetaData map[common.Address]PoolBalanceMetaData
 }
 
-// TODO nick maybe we want to move this to the top of the file
 var exchangeName_UniswapV2 string
 var exchangeName_UniswapV3 string
 var exchangeName_BalancerV2 string
 var exchangeName_OneInchV2 string
+var exchangeName_ERC20 string
+var exchangeName_orderBooks string
 var mapOfExchangeNameToTopics = make(map[string][]common.Hash)
 
-// TODO nick give this a better name
+var topic_erc20Transfer string
+var topic_erc20Allowance string
+
 var flattenedValues []common.Hash
 var numWorkers int
 var allCurvePools []string
 var err error
 
 func init() {
-	fmt.Println("nickdebug NewHeads: init() called - 111pancake")
+	fmt.Println("nickdebug NewHeads: init() called - 222orderaggregator")
 	numWorkers = runtime.NumCPU() - 1
 	if numWorkers < 1 {
 		numWorkers = 1 // Ensure at least one worker
@@ -262,6 +264,11 @@ func init() {
 	exchangeName_BalancerV2 = "BalancerV2"
 	// var exchangeName_Curve string = "Curve"
 	exchangeName_OneInchV2 = "OneInchV2"
+	exchangeName_ERC20 = "ERC20"
+	exchangeName_orderBooks = "orderBooks"
+
+	topic_erc20Transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	topic_erc20Allowance = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
 
 	mapOfExchangeNameToTopics[exchangeName_UniswapV3] = []common.Hash{
 		common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"), // univ3 swap
@@ -282,6 +289,18 @@ func init() {
 		common.HexToHash("0x3cae9923fd3c2f468aa25a8ef687923e37f957459557c0380fd06526c0b8cdbc"), // OneInchV2 Withdrawn
 		common.HexToHash("0xbd99c6719f088aa0abd9e7b7a4a635d1f931601e9f304b538dc42be25d8c65c6"), // OneInchV2 Swapped
 	}
+	var erc20Events = []common.Hash{
+		common.HexToHash(topic_erc20Transfer),
+		common.HexToHash(topic_erc20Allowance),
+	}
+	mapOfExchangeNameToTopics[exchangeName_ERC20] = erc20Events
+	var orderbookEvents = []common.Hash{
+		common.HexToHash("0xac75f773e3a92f1a02b12134d65e1f47f8a14eabe4eaf1e24624918e6a8b269f"), // OtcOrderFilled
+		common.HexToHash("0xab614d2b738543c0ea21f56347cf696a3a0c42a7cbec3212a5ca22a4dcff2124"), // LimitOrderFilled
+		common.HexToHash("0xa6eb7cdc219e1518ced964e9a34e61d68a94e4f1569db3e84256ba981ba52753"), // OrderCancelled (0x and Tempo)
+		common.HexToHash("0x2bf10746b5979a7ded837e52451fcc5341fe2485928bd737e11b16e1a29b9366"), // Tempo Fill
+	}
+	mapOfExchangeNameToTopics[exchangeName_orderBooks] = orderbookEvents
 	// Flatten the map values
 	for _, values := range mapOfExchangeNameToTopics {
 		flattenedValues = append(flattenedValues, values...)
@@ -292,6 +311,8 @@ func init() {
 	} else {
 		fmt.Println("nickdebug NewHeads: allCurvePools", allCurvePools)
 	}
+
+	go startOrderBookAggregatorService()
 
 }
 
@@ -331,7 +352,7 @@ func curveWorker(id int, pools <-chan string, results chan<- PoolBalanceMetaData
 	for pool := range pools {
 		// log.Info("curveWorker count (start)", "count", curveWg.Count(), "pool", pool)
 		// Fetch balance metadata for the Curve pool
-		balanceMetaData, err := GetBalanceMetaData_Curve(pool)
+		balanceMetaData, err := getBalanceMetaData_Curve(pool)
 		if err != nil {
 			// Handle error, perhaps log it
 			fmt.Printf("Worker %d: Error fetching balance metadata for Curve pool %s: %v\n", id, pool, err)
@@ -375,26 +396,31 @@ func logWorker(id int, logs <-chan *Log, results chan<- PoolBalanceMetaData, log
 
 		var err error
 		switch topicExchangeName {
+		case exchangeName_ERC20:
+			balanceMetaData, err = getBalanceMetaData_ERC20(address, eventLog)
 		case exchangeName_UniswapV2:
 			// log.Info("found UniswapV2 log...", "pool", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_UniswapV2(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_UniswapV2(address.Hex())
 			// log.Info("finished UniswapV2 log", "pool", address.Hex())
 		case exchangeName_UniswapV3:
 			// log.Info("found UniswapV3 log...", "pool", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_UniswapV3(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_UniswapV3(address.Hex())
 			// log.Info("finished UniswapV3 log", "pool", address.Hex())
 		case exchangeName_BalancerV2:
 			poolId := eventLog.Topics[1]
 			// log.Info("found BalancerV2 log...", "poolId", poolId.Hex())
-			balanceMetaData, address, err = GetBalanceMetaData_BalancerV2(poolId)
+			balanceMetaData, address, err = getBalanceMetaData_BalancerV2(poolId)
 			// log.Info("finished BalancerV2 log", "poolId", poolId.Hex())
 		case exchangeName_OneInchV2:
 			// log.Info("found OneInchV2 log...", "address", address.Hex())
-			balanceMetaData, err = GetBalanceMetaData_OneInchV2(address.Hex())
+			balanceMetaData, err = getBalanceMetaData_OneInchV2(address.Hex())
 			AddPoolToActiveOneInchV2DecayPeriods(address, currentBlockNumber)
 			// log.Info("finished OneInchV2 log", "address", address.Hex())
+		case exchangeName_orderBooks:
+			// log.Info("found ZrxOrderBook log...", "pool", address.Hex())
+			balanceMetaData, err = getBalanceMetaData_OrderBooks(address, eventLog)
 		default:
-			log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
+			// log.Error("NewHeads: unknown exchangeName", "topicExchangeName", topicExchangeName)
 		}
 		if err != nil {
 			switch e := err.(type) {
@@ -425,7 +451,7 @@ func oneInchWorker(id int, pools <-chan common.Address, results chan<- PoolBalan
 		balanceMetaData := interface{}(nil)
 		// Process the pool
 		// Example: Fetching pool data (placeholder logic)
-		balanceMetaData, err = GetBalanceMetaData_OneInchV2(poolAddress.Hex())
+		balanceMetaData, err = getBalanceMetaData_OneInchV2(poolAddress.Hex())
 		if err != nil {
 			log.Error("NewHeads: error getting balanceMetaData on OneinchV2: ", "address:", poolAddress.Hex(), "error", err)
 		}
@@ -479,8 +505,6 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				}
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
-				// print the len of logs TODO nick remove this again
-				// log.Info("NewHeads: len(logs)", "count", len(logs))
 				if err != nil {
 					log.Error("NewHeads: error getting logs: ", err)
 					continue
@@ -510,7 +534,9 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				for i := 0; i < len(logs); i++ {
 					select {
 					case result := <-results:
-						newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+						if result.BalanceMetaData != nil {
+							newHeadsWithPoolBalanceMetaData.PoolBalanceMetaData[result.Address] = result
+						}
 					case <-time.After(200 * time.Millisecond):
 						log.Error("Timeout waiting for result from logWorker")
 					}
