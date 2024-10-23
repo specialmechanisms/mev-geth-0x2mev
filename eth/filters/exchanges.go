@@ -1,11 +1,11 @@
 package filters
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
-	"context"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -547,28 +547,28 @@ func GetBalanceMetaData_Curve(poolAddress string) (interface{}, error) {
 }
 
 func GetBalanceMetaData_v2_Curve(poolAddress string) (*MetaData_CurveV2, error) {
-    balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	balances_wei, err := GetPoolBalancesWei_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    priceScales, err := GetPriceScalesV2_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	priceScales, err := GetPriceScalesV2_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    d, err := Get_D_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	d, err := Get_D_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    metaData := &MetaData_CurveV2{
-        Balances_wei: balances_wei,
-        PriceScales:  priceScales,
-        D:            d,
-    }
+	metaData := &MetaData_CurveV2{
+		Balances_wei: balances_wei,
+		PriceScales:  priceScales,
+		D:            d,
+	}
 
-    return metaData, nil
+	return metaData, nil
 }
 
 type MetaData_CurveV2_2Tokens struct {
@@ -603,39 +603,39 @@ func GetBalanceMetaData_v2_2Tokens_Curve(poolAddress string) (*MetaData_CurveV2_
 }
 
 type MetaData_CurveV2_MetaStable struct {
-	Balances_MetaPool_wei	[]*big.Int
-	Balances_BasePool_wei	[]*big.Int
-	LPTokenSupply_BasePool	*big.Int
+	Balances_MetaPool_wei  []*big.Int
+	Balances_BasePool_wei  []*big.Int
+	LPTokenSupply_BasePool *big.Int
 }
 
 func GetBalanceMetaData_metaStable_Curve(poolAddress string) (*MetaData_CurveV2_MetaStable, error) {
-    basePoolAddress, err := GetBasePoolAddress_MetaStable_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	basePoolAddress, err := GetBasePoolAddress_MetaStable_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    balances_MetaPool_wei, err := GetPoolBalancesWei_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	balances_MetaPool_wei, err := GetPoolBalancesWei_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    balances_BasePool_wei, err := GetPoolBalancesWei_Curve(basePoolAddress)
-    if err != nil {
-        return nil, err
-    }
+	balances_BasePool_wei, err := GetPoolBalancesWei_Curve(basePoolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    lpTokenSupply_BasePool, err := GetLPTokenSupply_BasePool_MetaStable_Curve(poolAddress)
-    if err != nil {
-        return nil, err
-    }
+	lpTokenSupply_BasePool, err := GetLPTokenSupply_BasePool_MetaStable_Curve(poolAddress)
+	if err != nil {
+		return nil, err
+	}
 
-    metaData := &MetaData_CurveV2_MetaStable{
-        Balances_MetaPool_wei:  balances_MetaPool_wei,
-        Balances_BasePool_wei:  balances_BasePool_wei,
-        LPTokenSupply_BasePool: lpTokenSupply_BasePool,
-    }
+	metaData := &MetaData_CurveV2_MetaStable{
+		Balances_MetaPool_wei:  balances_MetaPool_wei,
+		Balances_BasePool_wei:  balances_BasePool_wei,
+		LPTokenSupply_BasePool: lpTokenSupply_BasePool,
+	}
 
-    return metaData, nil
+	return metaData, nil
 }
 
 func GetPoolBalancesWei_Curve(poolAddress string) ([]*big.Int, error) {
@@ -682,9 +682,9 @@ func GetPriceScalesV2_Curve(poolAddress string) ([]*big.Int, error) {
 
 	callOpts := &bind.CallOpts{}
 	poolAddressConverted := common.HexToAddress(poolAddress)
-	priceScales := make([]*big.Int, len(tokens) - 1)
+	priceScales := make([]*big.Int, len(tokens)-1)
 
-	for i := 0; i < len(tokens) - 1; i++ {
+	for i := 0; i < len(tokens)-1; i++ {
 		instancePool := bind.NewBoundContract(poolAddressConverted, parsedABI_Curve_V2Pool, client, client, client)
 
 		result := []interface{}{new(*big.Int)}
@@ -795,7 +795,7 @@ func GetBasePoolAddress_MetaStable_Curve(metaPoolAddress string) (string, error)
 	if !ok {
 		return "", fmt.Errorf("basePool not found or not a map")
 	}
-	
+
 	basePoolAddress, ok := basePool["exchange"].(string)
 	if !ok {
 		return "", fmt.Errorf("exchange not found or not a string")
@@ -928,4 +928,3 @@ func GetBalanceMetaData_UniswapV2(poolAddress string) ([]float64, error) {
 
 	return metaData, nil
 }
-

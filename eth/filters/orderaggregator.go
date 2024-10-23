@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-redis/redis/v8"
@@ -80,7 +80,7 @@ func fetchSnapshot() {
 }
 
 // TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
-//   you might want to checkout processUpdates for things like convertValuesToStringsAndRemoveScientificNotation
+//	you might want to checkout processUpdates for things like convertValuesToStringsAndRemoveScientificNotation
 func processExistingOrders() {
 	log.Println("processExistingOrders: processing existing orders")
 	for orderHash, orderData := range orderDataStore {
@@ -141,28 +141,28 @@ func updateOrdersOnchainData(orderHash string) {
 }
 
 func convertValuesToStringsAndRemoveScientificNotation(data map[string]interface{}) map[string]interface{} {
-    for key, value := range data {
-        switch v := value.(type) {
-        case map[string]interface{}:
-            data[key] = convertValuesToStringsAndRemoveScientificNotation(v)
-        case []interface{}:
-            for i, item := range v {
-                if itemMap, ok := item.(map[string]interface{}); ok {
-                    v[i] = convertValuesToStringsAndRemoveScientificNotation(itemMap)
-                } else {
-                    v[i] = fmt.Sprintf("%v", item)
-                }
-            }
-            data[key] = v
-        case float64:
-            data[key] = fmt.Sprintf("%.0f", v)
-        case int:
-            data[key] = fmt.Sprintf("%d", v)
-        default:
-            data[key] = fmt.Sprintf("%v", value)
-        }
-    }
-    return data
+	for key, value := range data {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			data[key] = convertValuesToStringsAndRemoveScientificNotation(v)
+		case []interface{}:
+			for i, item := range v {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					v[i] = convertValuesToStringsAndRemoveScientificNotation(itemMap)
+				} else {
+					v[i] = fmt.Sprintf("%v", item)
+				}
+			}
+			data[key] = v
+		case float64:
+			data[key] = fmt.Sprintf("%.0f", v)
+		case int:
+			data[key] = fmt.Sprintf("%d", v)
+		default:
+			data[key] = fmt.Sprintf("%v", value)
+		}
+	}
+	return data
 }
 
 func processUpdates() {
@@ -181,7 +181,7 @@ func processUpdates() {
 			continue
 		}
 
-		updateLoop:
+	updateLoop:
 		for _, update := range updates[0].Messages {
 			lastID = update.ID
 
@@ -218,7 +218,7 @@ func processUpdates() {
 						break updateLoop
 					}
 				}
-				
+
 			}
 			// if updateData lacks orderHash, skip the update
 			if orderUpdate.OrderHash == "" {
@@ -258,24 +258,24 @@ func processUpdates() {
 }
 
 func writeUpdateToStream(updateMap map[string]interface{}) error {
-    // Convert the updateMap to a byte slice
-    data, err := json.Marshal(updateMap)
-    if err != nil {
-        return fmt.Errorf("failed to marshal updateMap: %v", err)
-    }
+	// Convert the updateMap to a byte slice
+	data, err := json.Marshal(updateMap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updateMap: %v", err)
+	}
 
-    // Write the data to the Redis stream
+	// Write the data to the Redis stream
 	err = sharedRdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: "updateStream",
 		Values: map[string]interface{}{
 			"data": data,
 		},
 	}).Err()
-    if err != nil {
-        return fmt.Errorf("failed to write update to stream: %v", err)
-    }
+	if err != nil {
+		return fmt.Errorf("failed to write update to stream: %v", err)
+	}
 
-    return nil
+	return nil
 }
 
 func StartOrderBookAggregatorService() {

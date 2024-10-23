@@ -235,7 +235,6 @@ type NewHeadsWithPoolBalanceMetaData struct {
 	PoolBalanceMetaData map[common.Address]PoolBalanceMetaData
 }
 
-// TODO nick maybe we want to move this to the top of the file
 var exchangeName_UniswapV2 string
 var exchangeName_UniswapV3 string
 var exchangeName_BalancerV2 string
@@ -247,7 +246,6 @@ var mapOfExchangeNameToTopics = make(map[string][]common.Hash)
 var topic_erc20Transfer string
 var topic_erc20Allowance string
 
-// TODO nick give this a better name
 var flattenedValues []common.Hash
 var numWorkers int
 var allCurvePools []string
@@ -507,8 +505,6 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				}
 
 				logs, err := api.GetLogs(ctx, filterCriteria)
-				// print the len of logs TODO nick remove this again
-				// log.Info("NewHeads: len(logs)", "count", len(logs))
 				if err != nil {
 					log.Error("NewHeads: error getting logs: ", err)
 					continue
