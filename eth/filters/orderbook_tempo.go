@@ -324,6 +324,7 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 	}, nil
 }
 
+// TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
 func GetBalanceMetaData_Tempo(contractAddress common.Address, eventLog *Log) (TempoOrderInfo, error) {
 	orderHash := common.BytesToHash(eventLog.Data[0:32])
 

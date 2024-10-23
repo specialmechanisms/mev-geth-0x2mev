@@ -45,12 +45,7 @@ func initRedis() {
 	})
 }
 
-func cleanUpRedisStreams() {
-	// Clean up Redis streams
-	sharedRdb.Del(ctx, "snapshotStream")
-	sharedRdb.Del(ctx, "updateStream")
-}
-
+// TODO nick-0x test this as soon as you have the orderAggregator running.
 func fetchSnapshot() {
 	log.Println("fetchSnapshot: fetching initial snapshot")
 	for {
@@ -84,6 +79,8 @@ func fetchSnapshot() {
 	}
 }
 
+// TODO nick-0x test this as soon as you have the orderAggregator running. we need to have a order book to test this well
+//   you might want to checkout processUpdates for things like convertValuesToStringsAndRemoveScientificNotation
 func processExistingOrders() {
 	log.Println("processExistingOrders: processing existing orders")
 	for orderHash, orderData := range orderDataStore {
@@ -260,24 +257,6 @@ func processUpdates() {
 
 }
 
-// func writeUpdateToStream(updateData interface{}) {
-// 	// Serialize the update data to JSON
-// 	jsonData, err := json.Marshal(updateData)
-// 	if err != nil {
-// 		log.Fatalf("Failed to marshal update data: %v", err)
-// 	}
-
-// 	// Write update back to the shared Redis stream
-// 	_, err = sharedRdb.XAdd(ctx, &redis.XAddArgs{
-// 		Stream: "updateStream",
-// 		Values: map[string]interface{}{"data": string(jsonData)},
-// 	}).Result()
-// 	if err != nil {
-// 		log.Fatalf("writeUpdateToStream: Failed to write update: %v", err)
-// 	}
-// 	log.Println("writeUpdateToStream: update written to stream")
-// }
-
 func writeUpdateToStream(updateMap map[string]interface{}) error {
     // Convert the updateMap to a byte slice
     data, err := json.Marshal(updateMap)
@@ -299,30 +278,6 @@ func writeUpdateToStream(updateMap map[string]interface{}) error {
     return nil
 }
 
-func createSnapshot() {
-	log.Println("createSnapshot: waiting for lock")
-	mu.Lock()
-	defer mu.Unlock()
-	log.Println("createSnapshot: creating snapshot...")
-
-	// Serialize the current state of the orderDataStore
-	log.Println("createSnapshot: orderDataStore", orderDataStore)
-	snapshotData, err := json.Marshal(orderDataStore)
-	if err != nil {
-		log.Fatalf("Failed to marshal snapshot data: %v", err)
-	}
-
-	// Write the snapshot to the snapshotStream
-	_, err = sharedRdb.XAdd(ctx, &redis.XAddArgs{
-		Stream: "snapshotStream",
-		Values: map[string]interface{}{"snapshot": string(snapshotData)},
-	}).Result()
-	if err != nil {
-		log.Fatalf("createSnapshot: Failed to create snapshot: %v", err)
-	}
-	log.Println("createSnapshot: snapshot created")
-}
-
 func StartOrderBookAggregatorService() {
 
 	WaitForHTTPServerToStart()
@@ -333,44 +288,29 @@ func StartOrderBookAggregatorService() {
 
 	log.Println("StartOrderBookAggregatorService: redis initialized")
 
-	// cleanUpRedisStreams()
-
-	// ZRXCreateOrder()
-
-	// Create an initial snapshot if none exists
-	// createSnapshot()
-
+	// TODO nick-0x test this as soon as you have the orderAggregator running. we need snapshots to test this
 	// Fetch initial snapshot and initialize local state
 	// fetchSnapshot()
-	log.Println("StartOrderBookAggregatorService: initial snapshot fetched")
-
+	// log.Println("StartOrderBookAggregatorService: initial snapshot fetched")
 	// Start a goroutine to process updates continuously
 	// processExistingOrders()
+
 	go processUpdates()
-	// log.Println("process updates started")
-
-	time.Sleep(100 * time.Millisecond)
-	log.Println("StartOrderBookAggregatorService: going to create a snapshot")
-	createSnapshot()
-	log.Println("StartOrderBookAggregatorService: last snapshot created")
-
-	// // Keep the main function running to allow the goroutine to process updates
-	select {}
+	log.Println("StartOrderBookAggregatorService: processUpdates started")
 }
 
 func WaitForHTTPServerToStart() {
 	// doing a random call until we get a valid response to know that the server has started
 	log.Println("StartOrderBookAggregatorService: waiting for http server to start...")
 	for {
-		balance, err := GetERC20TokenBalance(
+		_, err := GetERC20TokenBalance(
 			common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
 			common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"))
 		if err == nil {
 			log.Println("StartOrderBookAggregatorService: http server started")
-			log.Println("StartOrderBookAggregatorService: balance", balance)
 			break
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 

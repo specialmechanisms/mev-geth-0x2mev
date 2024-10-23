@@ -79,7 +79,6 @@ type ZRXMetaData struct {
 	CreatedAt                    string `json:"createdAt"`
 }
 
-// TODO nick-0x make those strings into common.Address
 type ZRXOrderDetails struct {
 	Signature           ZRXSignature   `json:"signature"`
 	Sender              common.Address `json:"sender"`
@@ -297,22 +296,6 @@ func ZRXConvertOrderToZRXOrderRaw(order Order) (ZRXOrderRaw, error) {
 
 	return zrxOrderRaw, nil
 }
-
-// func ZRXConvertZRXOrderRawToOrder(zrxOrderRaw ZRXOrderRaw) Order {
-//     return Order{
-//         OrderHash:     zrxOrderRaw.OrderHash,
-//         OrderBookName: zrxOrderRaw.OrderBookName,
-//         OffChainData:  zrxOrderRaw.OffChainData,
-//         OnChainData: OnChainData{
-//             MakerBalance_weiUnits:   zrxOrderRaw.OnChainData.MakerBalance_weiUnits,
-//             MakerAllowance_weiUnits: zrxOrderRaw.OnChainData.MakerAllowance_weiUnits,
-//             OrderInfo: ZRXOrderInfo{
-//                 Status:                 zrxOrderRaw.OnChainData.OrderInfo.Status,
-//                 TakerTokenFilledAmount: zrxOrderRaw.OnChainData.OrderInfo.TakerTokenFilledAmount,
-//             },
-//         },
-//     }
-// }
 
 func ZRXConvertZRXOrderRawToZRXOrder(zrxOrder ZRXOrderRaw) (ZRXOrder, error) {
 	var convertedOrder ZRXOrder
