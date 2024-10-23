@@ -230,3 +230,8 @@ func GetTokenDecimals(tokenAddress common.Address) (int, error) {
 	}
 	return int(tokenDecimals[0].(uint8)), nil
 }
+
+// intToBool converts an integer to a boolean.
+func intToBool(i int) bool {
+	return i != 0
+}

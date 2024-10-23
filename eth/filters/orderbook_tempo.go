@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	ORDERBOOKNAME_TEMPO = "tempo"
+	ORDERBOOKNAME_TEMPO    = "tempo"
 	ORDERBOOKADDRESS_TEMPO = common.HexToAddress("0x93be362993d5B3954dbFdA49A1Ad1844c8083A30")
 )
 
@@ -56,7 +56,6 @@ type TempoOffChainData_SignedOrder struct {
 	// OrderHash              common.Hash            `json:"orderHash"`
 }
 
-// TODO nick-0x why is a dataDecoded field getting set? we are not defining it here
 type TempoOffChainDataOrder struct {
 	Maker                common.Address `json:"maker"`
 	MakerToken           common.Address `json:"makerToken"`
@@ -84,24 +83,33 @@ type TempoOrderInfo struct {
 }
 
 type TempoData struct {
-	Begin             int
-	Expiry            int
-	PartiallyFillable int
-	Authorization     int
-	UsePermit2        int
-	Nonce             int
+	Begin                 int64
+	Expiry                int64
+	PartiallyFillable     bool
+	AuthorizationRequired bool
+	UsePermit2            bool
+	Nonce                 *big.Int
 }
 
-// this should only be for debugging purposes - not even sure it works
+// TempoDecodeOrderDataInt decodes the order data from a big.Int into a TempoData struct.
+// The data is encoded in a specific format where each field is packed into specific bits of the big.Int.
+// This function extracts each field using bitwise operations.
 func TempoDecodeOrderDataInt(data *big.Int) (TempoData, error) {
 	var tempoData TempoData
-	dataInt := data.Int64()
-	tempoData.Begin = int(dataInt & 0xffffffff)
-	tempoData.Expiry = int((dataInt >> 32) & 0xffffffff)
-	tempoData.PartiallyFillable = int((dataInt >> 64) & 0x1)
-	tempoData.Authorization = int((dataInt >> 65) & 0x1)
-	tempoData.UsePermit2 = int((dataInt >> 66) & 0x1)
-	tempoData.Nonce = int((dataInt >> 67) & 0xffffffff)
+
+	// Extract the 'begin' field (first 64 bits)
+	tempoData.Begin = new(big.Int).And(data, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))).Int64()
+	// Extract the 'expiry' field (next 64 bits)
+	tempoData.Expiry = new(big.Int).And(new(big.Int).Rsh(data, 64), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))).Int64()
+	// Extract the 'partiallyFillable' field (1 bit at position 128)
+	tempoData.PartiallyFillable = intToBool(int(new(big.Int).And(new(big.Int).Rsh(data, 128), big.NewInt(0x1)).Int64()))
+	// Extract the 'authorizationRequired' field (1 bit at position 129)
+	tempoData.AuthorizationRequired = intToBool(int(new(big.Int).And(new(big.Int).Rsh(data, 129), big.NewInt(0x1)).Int64()))
+	// Extract the 'usePermit2' field (1 bit at position 130)
+	tempoData.UsePermit2 = intToBool(int(new(big.Int).And(new(big.Int).Rsh(data, 130), big.NewInt(0x1)).Int64()))
+	// Extract the 'nonce' field (remaining bits starting at position 131)
+	tempoData.Nonce = new(big.Int).Rsh(data, 131)
+
 	return tempoData, nil
 }
 
@@ -225,7 +233,7 @@ func TempoGetOnChainData(tempoOrder TempoOrder) (OnChainData, error) {
 		return onChainData, fmt.Errorf("failed to decode order data: %v", err)
 	}
 	// if permit2 order
-	if decodedDataInt.UsePermit2 == 1 {
+	if decodedDataInt.UsePermit2 {
 		log.Println("permit2 order found")
 		// get the maker allowance set in the permit2 contract
 		// log an error to integrate this part
@@ -256,7 +264,6 @@ func TempoGetOrderInfo(tempoOrder TempoOrder) (TempoOrderInfo, error) {
 	var orderInfoResponse []interface{}
 
 	instance_tempoContract := bind.NewBoundContract(ORDERBOOKADDRESS_TEMPO, parsedABI_Tempo, client, client, client)
-
 
 	inputParameters := &struct {
 		Order     TempoOffChainDataOrder `json:"order"`
